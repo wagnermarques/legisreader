@@ -1,0 +1,561 @@
+#+TITLE: Roadmap — legisreader
+#+AUTHOR: FzlSoft
+#+DATE: [2026-09-15 ter]
+#+STARTUP: overview
+#+OPTIONS: toc:2 num:2
+
+* Visão geral
+
+O *legisreader* é um leitor de legislação brasileira para *estudantes de
+direito*, começando pelo *Código Penal* (Decreto-Lei nº 2.848, de 7 de
+dezembro de 1940) e pensado desde o início para receber outras normas
+(CPP, Lei de Drogas, Constituição, e mais adiante legislação estadual e
+municipal).
+
+Três ideias guiam o projeto:
+
+1. *Texto só de fonte oficial.* Nada de copiar anotações, remissões ou a
+   organização editorial de terceiros.
+2. *Lei muda, e o histórico importa.* Cada dispositivo guarda as suas
+   versões com datas de vigência. Em direito penal isso não é detalhe: a
+   lei aplicável depende da data do fato e da retroatividade da lei mais
+   benéfica (art. 2º do CP, art. 5º, XL, da CF).
+3. *Mesma arquitetura do biblereaderapp.* PWA estático, offline-first, com
+   login e sincronização opcionais. O app funciona 100% sem conta.
+
+* Repositórios
+
+| Repositório                 | Papel                                                        | Como entra no legisreader       |
+|-----------------------------+--------------------------------------------------------------+---------------------------------|
+| =fzl-fund-appshell--lit=    | Casca do app: header, drawer, roteador, tema, PWA, auth, notificações | Submódulo git em =appshell/=    |
+| =legisreader= (este)        | Views e serviços do domínio jurídico, configuração do PWA, deploy | —                               |
+| =legis-dados=               | Pipeline de coleta e conversão + dados versionados das normas | Artefato publicado (ver [[*Como o app consome os dados][abaixo]]) |
+
+Por que três: o appshell evolui para toda a família de apps da FzlSoft; os
+dados mudam num ritmo próprio (diário, guiado pelo DOU) e podem virar um
+*dataset aberto* útil para outros projetos; e o app fica livre de commits
+diários de dados no histórico.
+
+* Fontes do texto legal e base jurídica
+
+** Pode usar o texto?
+
+Sim. A Lei nº 9.610/1998, art. 8º, IV, exclui da proteção do direito
+autoral "os textos de tratados ou convenções, leis, decretos,
+regulamentos, decisões judiciais e demais atos oficiais". O que *pode* ser
+protegido são os acréscimos de terceiros: comentários, anotações, seleção
+de jurisprudência, e a compilação ou base de dados enquanto obra (arts.
+7º, XIII, e 87). Regra do projeto: *só capturar de fontes oficiais*, e
+guardar sempre de onde e quando cada texto veio.
+
+** Fontes
+
+| Fonte                         | Uso no projeto                                                     |
+|-------------------------------+--------------------------------------------------------------------|
+| Planalto (=planalto.gov.br/ccivil_03=) | Texto compilado atual (=del2848compilado.htm=): base da importação |
+| LexML Brasil (=lexml.gov.br=) | Identificadores URN LEX e relações entre normas (quem alterou o quê) |
+| Imprensa Nacional / DOU (INLABS) | Fonte *oficial*: detectar no dia a publicação de leis alteradoras |
+| Câmara (=dadosabertos.camara.leg.br=) / Senado | Projetos em tramitação que alteram a norma (aviso antecipado — fase futura) |
+
+URLs, formatos e termos de uso devem ser *verificados de novo* no marco D1,
+antes de escrever qualquer coletor.
+
+** Regras de coleta
+
+- Respeitar =robots.txt= e termos de uso; limitar a frequência (uma
+  captura por norma por execução é suficiente).
+- Preferir API ou dados abertos a raspar HTML sempre que existir
+  alternativa.
+- Credenciais (ex.: cadastro do INLABS) ficam só em /secrets/ do GitHub
+  Actions do =legis-dados=, nunca no repositório.
+- O app exibe um aviso permanente: /o texto compilado não substitui o
+  publicado no Diário Oficial da União/.
+
+* Arquitetura
+
+#+begin_example
+               ┌────────────────────── legis-dados ──────────────────────┐
+ Planalto ───► │ captura (snapshot bruto) ─► parser ─► JSON por norma     │
+ DOU/INLABS ─► │ monitor diário ─► detecta mudança ─► abre PR p/ revisão  │
+ LexML ──────► │ metadados/URNs                        │                  │
+               └───────────────────────────────────────┼──────────────────┘
+                                                       │ release (tag)
+                                                       ▼
+               ┌────────────────────── legisreader ──────────────────────┐
+               │ build: baixa a release ─► public/data/ ─► PWA (Pages)   │
+               │ appshell/ (submódulo) + src/ (domínio jurídico)         │
+               └───────────────────────────┬─────────────────────────────┘
+                                           │ opcional (login)
+                                           ▼
+                           backend de sync (favoritos, grifos, anotações)
+#+end_example
+
+** legis-dados — estrutura proposta
+
+#+begin_example
+fontes/
+  br/federal/decreto-lei/1940-2848.yaml   # URN, URL do Planalto, termos de busca no DOU
+snapshots/
+  br/federal/decreto-lei/1940-2848/planalto/2026-09-15.html
+                                           # captura bruta, para auditoria e reprocessamento
+dados/
+  br/federal/decreto-lei/1940-2848/
+    norma.json         # metadados: URN, ementa, datas, fonte, data da captura
+    estrutura.json     # árvore: Parte > Título > Capítulo > Seção > artigos
+    dispositivos.json  # todos os dispositivos com suas versões (ver abaixo)
+  indice.json          # lista leve de normas disponíveis
+schema/                # JSON Schema do formato (validado no CI)
+pipeline/              # scripts Node: capturar, converter, validar, detectar, publicar
+.github/workflows/     # monitor diário, validação de PR, publicação de release
+#+end_example
+
+O caminho dos dados segue a URN do LexML
+(=urn:lex:br:federal:decreto.lei:1940-12-07;2848=), só que num formato
+seguro para nomes de arquivo. A URN completa fica em =norma.json=. Assim,
+acrescentar =br/sp/lei/...= mais tarde não muda nada na estrutura.
+
+** Formato dos dispositivos (v1, a validar no marco D1)
+
+#+begin_src jsonc
+{
+  "id": "art121_par2_inc6",        // estável; inspirado nos IDs do LexML
+  "tipo": "inciso",                // artigo | caput | paragrafo | inciso | alinea | item | pena
+  "rotulo": "VI –",
+  "rubrica": null,                 // ex.: "Feminicídio" (título marginal do dispositivo)
+  "pai": "art121_par2",
+  "versoes": [
+    {
+      "texto": "…",
+      "vigenteDesde": "AAAA-MM-DD",
+      "vigenteAte": null,          // null = versão vigente
+      "evento": "incluido",        // original | incluido | redacao-dada | revogado | renumerado
+      "origem": "urn:lex:br:federal:lei:AAAA-MM-DD;NNNNN",
+      "vigenciaConfirmada": false, // true só após revisão humana (vacatio legis, vetos)
+      "capturadoEm": "2026-09-15",
+      "fonte": "planalto"
+    }
+  ],
+  "observacoes": []                // ex.: decisão do STF em controle de constitucionalidade
+}
+#+end_src
+
+Pontos importantes:
+- *O =id= nunca muda*, mesmo com a mudança do texto. Favoritos e anotações
+  apontam para ele.
+- Dispositivos acrescentados com letra (ex.: art. 121-A) ganham IDs
+  próprios (=art121-A=). A convenção exata é definida em D1.
+- Publicação e vigência são coisas diferentes; o campo
+  =vigenciaConfirmada= deixa isso explícito até a revisão humana.
+- Declaração de inconstitucionalidade pelo STF não altera o texto: vira
+  =observacoes=, inicialmente preenchidas à mão.
+
+** Histórico: estratégia em duas frentes
+
+1. *Daqui para frente (automático):* a cada mudança detectada, o pipeline
+   compara a nova estrutura com a anterior, dispositivo a dispositivo,
+   fecha a versão antiga (=vigenteAte=) e abre a nova. A lei de origem vem
+   das notas do Planalto ("Redação dada pela Lei nº …").
+2. *Para trás (reconstrução gradual, marco D5):* reconstruir versões
+   anteriores a partir das leis alteradoras (LexML + texto original de
+   cada lei). Não bloqueia a primeira versão pública: até lá, o app mostra
+   o texto atual e indica que o histórico anterior à captura está
+   incompleto.
+
+** Detecção de mudanças
+
+| Sinal                              | Mecanismo                                              | Resultado            |
+|------------------------------------+--------------------------------------------------------+----------------------|
+| Publicação no DOU (oficial)        | Cron diário: XML da Seção 1, busca por "Decreto-Lei nº 2.848" / "Código Penal" | Abre /issue/ com o ato encontrado |
+| Página compilada do Planalto mudou | Cron diário: hash do HTML normalizado                   | Nova captura + parser + /PR/ com diff por dispositivo |
+| Projetos de lei (futuro)           | APIs da Câmara/Senado                                   | Aviso "em tramitação" no app |
+
+Nenhuma mudança vai para produção sem *revisão humana do PR*. Um erro de
+parser mostrando o artigo errado para estudantes custa mais do que um dia
+de atraso.
+
+** Como o app consome os dados
+
+Recomendação: *artefato de release*, não submódulo.
+- O =legis-dados= publica uma release versionada (ex.: =dados-2026.09.15=)
+  com o conteúdo de =dados/=.
+- O build do =legisreader= baixa uma release *fixada* e copia o conteúdo
+  para =public/data/=. O app sempre é publicado com dados conhecidos e
+  validados.
+- Ao publicar uma release, o =legis-dados= dispara um =repository_dispatch=
+  para o =legisreader= fazer o redeploy. O toast "nova versão disponível"
+  do appshell cuida do resto no dispositivo do estudante.
+
+** legisreader — estrutura proposta
+
+#+begin_example
+appshell/                 # submódulo: fzl-fund-appshell--lit
+src/
+  main.js                 # registra rotas, menu e views no appshell
+  routes.js               # rotas do domínio (abaixo)
+  webcomponents/
+    norma-nav.js          # árvore Parte > Título > Capítulo (drawer)
+    norma-list-view.js    # normas disponíveis
+    dispositivo-view.js   # leitura do artigo com parágrafos/incisos
+    historico-view.js     # linha do tempo e comparação de versões
+    busca-view.js         # campo, filtros, resultados agrupados por artigo
+    ocorrencias-bar.js    # "2 de 7" ▲/▼ na leitura, vindo de uma pesquisa
+    estudo-view.js        # favoritos, grifos, anotações
+  services/
+    legis-data-service.js # carrega indice/norma/dispositivos sob demanda, com cache
+    vigencia-service.js   # "texto em vigor na data X", diff entre versões
+    search-service.js     # interface da pesquisa (fala com o worker)
+    search-worker.js      # varredura/índice fora da thread principal
+    text-normalize.js     # normalização + mapa de posições (com testes)
+    citacao.js            # "CP, art. 121, § 2º, VI" a partir do id do dispositivo
+    estudo-service.js     # favoritos/grifos/anotações/progresso, local-first
+public/data/              # preenchido no build a partir da release do legis-dados
+supabase/migrations/      # se o backend do appshell (M4) for Supabase
+vite.config.js            # manifest do legisreader + preset/aliases do appshell
+.github/workflows/deploy.yml
+#+end_example
+
+Rotas (hash router, URLs permanentes e compartilháveis):
+
+#+begin_example
+#/                                            -> início / normas
+#/br/federal/decreto-lei/1940-2848            -> sumário da norma
+#/br/federal/decreto-lei/1940-2848/art121     -> artigo
+#/br/federal/decreto-lei/1940-2848/art121?em=2020-01-01   -> texto em vigor na data
+#/br/federal/decreto-lei/1940-2848/art121/historico       -> linha do tempo / diff
+#/busca?q=...&norma=...&escopo=vigente|todos&ordem=lei|relevancia
+#/br/federal/decreto-lei/1940-2848/art25?q=legitima+defesa&oc=2  -> leitura com ocorrência destacada
+#/estudo                                     -> favoritos, grifos, anotações
+#+end_example
+
+** Dados do estudante
+
+Local-first, com o mesmo padrão do biblereaderapp (=localStorage= +
+helpers de lista com chave), e sincronizados só quando houver login:
+- *favoritos* e *grifos* por dispositivo;
+- *anotações* por dispositivo, guardando também a versão anotada
+  (=vigenteDesde=), para avisar quando o artigo mudou depois;
+- *progresso de leitura*, com a mesma lógica do =read_verses=.
+
+O =notification-service= do appshell é perfeito para o aviso /"O art. X,
+que você anotou, foi alterado pela Lei nº …"/.
+
+** Pesquisa
+
+A pesquisa é uma das funções centrais do app. O estudante digita uma
+palavra ou um trecho e precisa (1) ver *onde* aquilo aparece na lei, com
+contexto suficiente para escolher o resultado certo, e (2) ir *direto ao
+ponto exato* do texto, com a ocorrência destacada.
+
+*** Experiência do usuário
+
+#+begin_example
+┌──────────────────────────────────────────────────────────────────┐
+│ 🔍 legitima defesa                                     [×]       │
+│ Código Penal · só texto vigente ▾ · ordem da lei ▾               │
+├──────────────────────────────────────────────────────────────────┤
+│ 7 ocorrências em 4 artigos                                       │
+│                                                                  │
+│ Art. 23 — Exclusão de ilicitude                                  │
+│ Parte Geral › Título II › Do Crime                               │
+│   II – em [legítima defesa];                                     │
+│                                                                  │
+│ Art. 25 — Legítima defesa                                        │
+│ Parte Geral › Título II › Do Crime                               │
+│   caput: Entende-se em [legítima defesa] quem, usando…           │
+│   parágrafo único: …também se considera em [legítima defesa]…    │
+│ …                                                                │
+└──────────────────────────────────────────────────────────────────┘
+          │ toque no resultado
+          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ ‹ resultados   "legitima defesa"   2 de 7   [▲] [▼]              │
+├──────────────────────────────────────────────────────────────────┤
+│ Art. 25 — Legítima defesa                                        │
+│ Entende-se em ▓legítima defesa▓ quem, usando moderadamente…      │
+│ (a tela rola até a ocorrência, que fica destacada)               │
+└──────────────────────────────────────────────────────────────────┘
+#+end_example
+
+- *Resultados agrupados por artigo*: cada artigo aparece uma vez, com as
+  ocorrências nos dispositivos dele (caput, §§, incisos, alíneas) listadas
+  embaixo.
+- Cada resultado mostra a *localização*: rubrica, caminho na estrutura
+  (Parte › Título › Capítulo) e a *citação* pronta ("CP, art. 25,
+  parágrafo único").
+- *Trecho com o termo destacado* e um pouco de contexto antes e depois.
+- Ao abrir um resultado, a leitura *rola até a ocorrência e a destaca*.
+  Uma barra de navegação ("2 de 7", ▲/▼) percorre todas as ocorrências da
+  pesquisa sem voltar à lista.
+- A pesquisa tem URL própria (=#/busca?q=legitima+defesa=), então pode ser
+  compartilhada e o botão "voltar" do navegador funciona.
+- Resultados aparecem enquanto o usuário digita (com debounce), e há
+  pesquisas recentes guardadas localmente.
+- *Acessibilidade*: número de resultados anunciado via =aria-live=, lista
+  navegável por teclado, e destaque que não depende só de cor.
+
+*** O que a pesquisa entende
+
+| Consulta do usuário       | Comportamento                                                           |
+|---------------------------+-------------------------------------------------------------------------|
+| =homicidio=               | Ignora acentos e maiúsculas: encontra "Homicídio"                        |
+| =legitima defesa=         | Todos os termos no *mesmo dispositivo*, em qualquer ordem                |
+| ="legitima defesa"=       | Frase exata, na ordem                                                   |
+| =furt=                    | O último termo digitado também vale como prefixo ("furto", "furtada")    |
+| =art 121=, =121 §2 VI=    | Entendido como *referência*: o primeiro resultado é "ir para o art. 121, § 2º, VI" |
+| =§ 2º= / =paragrafo 2=    | Equivalentes: =§= ↔ "parágrafo", =º= ↔ =°= ↔ =o=                         |
+
+A normalização (acentos, maiúsculas, =º/°=, travessões, espaços especiais)
+é definida *uma vez*, com testes, e aplicada igualmente ao texto e à
+consulta.
+
+Ficam para depois: plural e variações de palavras (radicalização em
+português, "furto" ↔ "furtos"), tolerância a erros de digitação e
+sinônimos. Só entram se os testes com estudantes mostrarem necessidade.
+
+*** Escopo e filtros
+
+- *Onde procurar*: texto dos dispositivos (padrão), rubricas e títulos da
+  estrutura ("Dos Crimes contra o Patrimônio"). Opcionalmente, anotações
+  do próprio estudante.
+- *Qual versão*: só o texto vigente (padrão); incluir dispositivos
+  revogados; ou o texto em vigor numa data (integra com o L5).
+- *Qual norma*: a norma aberta ou todas (quando houver mais de uma).
+- *Ordenação*: *ordem da lei* (padrão, é como o estudante pensa o código)
+  ou *relevância* (frase exata > todos os termos juntos > rubrica).
+
+*** Como funciona por dentro
+
+#+begin_example
+ busca-view ──consulta──► search-service ──postMessage──► search-worker
+     ▲                                                     │
+     └──── resultados: [{ normaId, dispositivoId,          │ carrega os dados das
+            versao, caminho, citacao, trecho,              │ normas (mesmo cache do
+            ocorrencias: [[inicio, fim], …] }] ◄───────────┘ legis-data-service)
+#+end_example
+
+- *Web Worker*: a pesquisa roda fora da thread principal, então digitar
+  nunca trava a interface, mesmo com várias normas e históricos.
+- *Posições das ocorrências no texto original*: a busca compara textos
+  normalizados, mas devolve início e fim *no texto original*. Para isso,
+  a normalização mantém um mapa de posições (normalizado → original). É
+  isso que permite destacar exatamente o trecho certo com =<mark>=, sem
+  depender de uma segunda busca na tela.
+- *Link do resultado*: a rota do dispositivo recebe a consulta
+  (=#/br/federal/decreto-lei/1940-2848/art25?q=legitima+defesa&oc=2=). A
+  view destaca as ocorrências, rola até a de número =oc= e mostra a barra
+  de navegação.
+- *Offline*: a pesquisa usa os dados já baixados. Se alguma norma ainda não
+  estiver disponível offline, a interface avisa ("2 normas não
+  pesquisadas: sem conexão").
+
+*** Estratégia de índice: medir antes de otimizar
+
+1. *Fase 1, varredura linear no worker.* É o mesmo princípio do
+   =search-service= do biblereaderapp, agora com texto pré-normalizado em
+   memória. O Código Penal tem poucas centenas de KB de texto, e varrer
+   isso leva poucos milissegundos.
+2. *Fase 2, índice invertido pré-construído, só se as medições pedirem.*
+   O =legis-dados= gera, na release, um =indice-busca.json= por norma (por
+   exemplo, com MiniSearch serializado ou formato próprio), e o worker
+   carrega esse índice em vez de varrer.
+
+O critério de mudança é *objetivo*: a resposta deve ficar abaixo de
+100 ms (p95) num celular intermediário, com todas as normas e o histórico
+completo. A interface do =search-service= é a mesma nas duas fases, então
+a troca não afeta a tela.
+
+*** Requisitos que a pesquisa impõe aos dados (D1/D2)
+
+- O =texto= de cada versão é *texto limpo*: sem HTML, e sem as notas "(Redação
+  dada pela Lei nº …)" misturadas. As notas vão para =origem= e
+  =evento=; senão, pesquisar "Lei" encontraria centenas de notas.
+- =rubrica=, =rotulo= e =pai= sempre preenchidos, para montar o caminho e a
+  citação sem heurística na interface.
+- =estrutura.json= com os títulos das divisões (Parte, Título, Capítulo,
+  Seção), que também são pesquisáveis.
+- Uma função de *citação* ("CP, art. 121, § 2º, VI") compartilhada
+  entre pesquisa, compartilhamento e anotações.
+
+* Requisitos para o appshell (propostos no repositório dele)
+
+O plano detalhado vive no roadmap do próprio appshell, para não existir
+em duas cópias: [[file:appshell/roadmap.org::*Uso como submódulo git (pontos de extensão)][appshell/roadmap.org — Uso como submódulo git]] e o
+marco [[file:appshell/roadmap.org::*A1 — Uso como submódulo (pontos de extensão)][A1]] de lá.
+
+Resumo do que o legisreader espera do appshell:
+- =createAppShell({ title, routes, home, drawer, headerActions, footerItems })=
+  para rotas (com parâmetros), views, seções do drawer (incluindo conteúdo
+  livre, como a árvore da norma) e ações no header (campo de pesquisa).
+- Prefixo de =localStorage= por app (=legisreader:*=). Apps em
+  =wagnermarques.github.io/<repo>= compartilham a mesma origem.
+- Preset do Vite (=appshellConfig({ base, manifest })=) e npm workspaces
+  com uma única cópia de =lit= / =@material/web=.
+- Backend de auth/sync: o legisreader depende só da *interface*
+  (=getCurrentUser/subscribe/signUp/signIn/signOut=); a escolha REST vs.
+  Supabase fica no M4 do appshell.
+
+* Roteiro por fases
+
+Prefixos: *A* = trabalho no appshell, *D* = =legis-dados=, *L* = =legisreader=.
+
+** DONE M0 — Planejamento
+- Fontes oficiais e base jurídica levantadas.
+- Decisões: appshell como submódulo; dados em repositório separado desde
+  já; primeira versão com texto atual e histórico registrado dali em
+  diante; licença AGPL-3.0.
+- Este roadmap.
+
+** TODO [#A] A1 — Pontos de extensão do appshell
+- Executado no repositório do appshell (submódulo em =appshell/=), em seis
+  passos (A1.1–A1.6) descritos em [[file:appshell/roadmap.org::*A1 — Uso como submódulo (pontos de extensão)][appshell/roadmap.org]].
+- [X] Submódulo adicionado ([2026-09-15 ter], commit =d4f13af= do shell).
+- [X] Plano do A1 registrado no roadmap do appshell.
+- [X] A1.1 — Testes e router genérico (appshell, não commitado ainda).
+- [ ] A1.2 — =createAppShell= e rotas/views configuráveis.
+
+** TODO [#A] D1 — legis-dados: formato e fundação
+- Criar o repositório (AGPL-3.0 para o código; o texto legal é domínio
+  público — dizer isso no README).
+- Reconferir URLs, formatos e termos de uso das fontes.
+- Fechar a convenção de IDs dos dispositivos e o JSON Schema v1,
+  incluindo os [[*Requisitos que a pesquisa impõe aos dados (D1/D2)][requisitos da pesquisa]] (texto limpo, rubricas, caminho).
+- CI que valida =dados/= contra o schema em todo PR.
+
+** TODO [#A] D2 — Importador do Código Penal (Planalto)
+- Captura com snapshot bruto versionado (encoding normalizado para UTF-8).
+- Parser HTML → =estrutura.json= + =dispositivos.json=: hierarquia,
+  rubricas, penas, notas de alteração, trechos revogados.
+- *Testes golden* (Vitest) sobre snapshots fixos: número de artigos,
+  artigos com letra, dispositivos revogados, idempotência (reprocessar o
+  mesmo snapshot gera exatamente o mesmo JSON).
+- Conferência manual por amostragem de artigos-chave.
+
+** TODO [#A] L1 — Esqueleto do legisreader
+- =git submodule add= do appshell; =vite.config.js= usando o preset.
+- CI com =actions/checkout= usando =submodules: recursive=; branches
+  =main= (trabalho) e =production= (deploy), como nos demais apps.
+- Build baixando uma release fixada do =legis-dados= para =public/data/=.
+- Aviso de "texto não oficial" e página "Sobre / fontes".
+
+** TODO [#A] L2 — Leitura
+- Sumário navegável da norma no drawer (Parte > Título > Capítulo).
+- Leitura por artigo com parágrafos, incisos e alíneas; anterior/próximo.
+- URLs permanentes por dispositivo; copiar/compartilhar citação
+  ("CP, art. 121, § 2º, VI").
+- Tamanho de fonte e tema (herdados do shell); offline com precache do CP.
+
+** TODO [#A] L3 — Pesquisa (ver [[*Pesquisa][Pesquisa]])
+*** TODO L3.1 — Núcleo
+- =text-normalize.js= com mapa de posições e testes (acentos, =º/°=, =§=,
+  travessões, espaços especiais).
+- =search-worker.js= com varredura linear: termos no mesmo dispositivo,
+  frase exata entre aspas, prefixo no último termo.
+- =citacao.js= e montagem do caminho (Parte › Título › Capítulo).
+- Testes golden de consultas: "homicidio" → art. 121; "legitima defesa" →
+  arts. 23 e 25; "\"estado de necessidade\""; "§ 2º" ↔ "paragrafo 2".
+*** TODO L3.2 — Tela de resultados
+- =busca-view= com debounce, resultados agrupados por artigo, trecho com
+  destaque, total de ocorrências, URL =#/busca?q=…=, pesquisas recentes.
+- Campo de pesquisa sempre à mão no header (via slot do appshell, A1).
+*** TODO L3.3 — Localização no texto
+- Rota do dispositivo com =q= e =oc=: destaca com =<mark>=, rola até a
+  ocorrência e mostra =ocorrencias-bar= ("2 de 7", ▲/▼) percorrendo
+  todas as ocorrências da pesquisa, inclusive entre artigos.
+*** TODO L3.4 — Referências e filtros
+- Consulta de referência ("art 121", "121 §2 VI") vira atalho direto.
+- Filtros: norma, só vigentes / incluir revogados, ordem da lei /
+  relevância; pesquisa em rubricas e títulos da estrutura.
+*** TODO L3.5 — Medição de desempenho
+- Benchmark no worker (celular intermediário, CP completo e cenário
+  simulado com várias normas e histórico). Registrar os números aqui e
+  decidir sobre a fase 2 (índice pré-construído no =legis-dados=).
+*** TODO [#C] L3.6 — Evoluções (conforme uso real)
+- Pesquisa por data de vigência (integra com L5) e nas anotações do
+  estudante (integra com L4).
+- Plural e variações de palavras, tolerância a erros de digitação, sugestões
+  de rubricas enquanto digita.
+
+** TODO [#B] D3 — Monitor de mudanças
+- Cron diário: DOU (INLABS) → /issue/; Planalto (hash) → nova captura +
+  /PR/ com diff legível por dispositivo.
+- Preenchimento de =vigenteAte=/=vigenteDesde= e =vigenciaConfirmada=
+  na revisão.
+
+** TODO [#B] D4 — Publicação
+- Release versionada de =dados/= + =repository_dispatch= para o legisreader.
+
+** TODO [#B] L4 — Estudo (local)
+- Favoritos, grifos coloridos, anotações e progresso de leitura em
+  =localStorage= (padrão do storage-service), sem conta.
+
+** TODO [#B] L5 — Histórico na interface
+- "Texto em vigor na data…", linha do tempo do dispositivo, comparação
+  entre versões (diff).
+- Selo "alterado recentemente"; aviso de anotação sobre texto que mudou
+  (via =notification-service=).
+- Indicação clara de histórico incompleto antes da primeira captura.
+
+** TODO [#C] L6 — Sincronização opcional
+- Depende do M4 do appshell. Tabelas com RLS: favoritos, grifos,
+  anotações, progresso (referenciando =norma= + =dispositivo_id=).
+
+** TODO [#C] D5 — Reconstrução do histórico passado
+- A partir das leis alteradoras (LexML + texto original de cada lei),
+  começando pelas alterações mais recentes e mais cobradas em estudo.
+
+** TODO [#C] L7 / D6 — Segunda norma
+- Código de Processo Penal (Decreto-Lei nº 3.689/1941) para validar que o
+  formato, o pipeline e a interface realmente são multi-norma.
+
+** TODO [#C] Futuro
+- Projetos de lei em tramitação que alteram a norma (Câmara/Senado).
+- Controle de constitucionalidade (STF) de forma semiautomática.
+- Remissões entre dispositivos (ex.: "art. 61" citado dentro de outro artigo
+  vira link).
+- Constituição Federal; legislação estadual e municipal.
+
+* Decisões pendentes / riscos
+
+- *Fragilidade do parser do Planalto*: o HTML compilado é irregular e
+  pode mudar sem aviso. Mitigação: snapshots versionados, testes golden, e
+  PR com revisão humana. O monitor deve falhar de forma visível, nunca
+  publicar dados parciais.
+- *Datas de vigência*: a nota do Planalto informa a lei de origem, não a
+  data em que a nova redação passou a valer (vacatio legis, vetos
+  derrubados promulgados depois). Fica como revisão humana até haver fonte
+  estruturada.
+- *Termos do INLABS*: exige cadastro; confirmar limites e condições de uso
+  automatizado em D1. Alternativa: o dump mensal de dados abertos da
+  Imprensa Nacional (com atraso).
+- *Colisão de =localStorage= no GitHub Pages*: todos os apps em
+  =wagnermarques.github.io= compartilham a origem. É requisito do A1
+  (prefixo configurável). Alternativa: domínio próprio por app.
+- *Fluxo com submódulo*: o legisreader fixa um commit do appshell;
+  atualizar é um ato deliberado (=git submodule update --remote= + teste).
+  Documentar isso no README.
+- *Backend do appshell (REST vs. Supabase)*: decisão do M4 do appshell. O
+  legisreader não deve assumir nenhum dos dois além da interface de
+  auth/sync.
+- *Tamanho dos dados com histórico*: precache só da norma principal;
+  demais normas e histórico completo com cache sob demanda (mesmo padrão
+  das traduções extras do biblereaderapp).
+- *Pesquisa com histórico completo*: com várias normas e todas as versões,
+  a varredura linear pode ficar lenta em celulares. Mitigação: worker desde
+  o início, medição objetiva em L3.5 e índice pré-construído como plano B,
+  sem mudar a interface do =search-service=.
+- *Normalização divergente*: se texto e consulta forem normalizados de
+  formas diferentes (ou se o pipeline e o app divergirem, caso o índice vá
+  para o =legis-dados=), a pesquisa falha em silêncio. Mitigação: uma única
+  implementação com testes, reutilizada pelos dois lados.
+- *Nome e marca*: "legisreader" como nome de repositório; nome exibido no
+  app, ícone e domínio ainda em aberto.
+
+* Licenciamento
+
+- Código do =legisreader= e do =legis-dados=: *AGPL-3.0-or-later*, pelo
+  mesmo motivo do biblereaderapp (sincronização em rede opcional e
+  distribuição pública).
+- Texto das normas: não protegido por direito autoral (Lei 9.610/1998,
+  art. 8º, IV). O README do =legis-dados= deve explicar isso e apontar a
+  fonte e a data de captura de cada norma.
+- Material Web e Material Symbols: Apache 2.0, como no appshell.
