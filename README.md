@@ -3,6 +3,13 @@
 Leitor de legislação brasileira para estudantes de direito. Ver `roadmap.org`
 para o plano completo do produto.
 
+Três repositórios compõem o projeto: este (views/serviços de domínio,
+deploy), [fzl-fund-appshell--lit](https://github.com/wagnermarques/fzl-fund-appshell--lit)
+(casca do app, submódulo em `appshell/`) e
+[legis-dados](https://github.com/wagnermarques/-legis-dados) (pipeline de
+coleta + dados versionados das normas, consumido como release, não
+submódulo — ver `roadmap.org`, seção "Repositórios", para o porquê).
+
 ## Usando o appshell como submódulo
 
 Este app usa o [fzl-fund-appshell--lit](https://github.com/wagnermarques/fzl-fund-appshell--lit)

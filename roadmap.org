@@ -29,7 +29,7 @@ Três ideias guiam o projeto:
 |-----------------------------+--------------------------------------------------------------+---------------------------------|
 | =fzl-fund-appshell--lit=    | Casca do app: header, drawer, roteador, tema, PWA, auth, notificações | Submódulo git em =appshell/=    |
 | =legisreader= (este)        | Views e serviços do domínio jurídico, configuração do PWA, deploy | —                               |
-| =legis-dados=               | Pipeline de coleta e conversão + dados versionados das normas | Artefato publicado (ver [[*Como o app consome os dados][abaixo]]) |
+| [[https://github.com/wagnermarques/-legis-dados][=legis-dados=]] | Pipeline de coleta e conversão + dados versionados das normas | Artefato publicado (ver [[*Como o app consome os dados][abaixo]]) |
 
 Por que três: o appshell evolui para toda a família de apps da FzlSoft; os
 dados mudam num ritmo próprio (diário, guiado pelo DOU) e podem virar um
@@ -448,13 +448,37 @@ CLOSED: [2026-09-15 ter]
     disciplina de atualização do submódulo, =submodules: recursive= para
     quando existir CI).
 
-** TODO [#A] D1 — legis-dados: formato e fundação
-- Criar o repositório (AGPL-3.0 para o código; o texto legal é domínio
-  público — dizer isso no README).
-- Reconferir URLs, formatos e termos de uso das fontes.
-- Fechar a convenção de IDs dos dispositivos e o JSON Schema v1,
-  incluindo os [[*Requisitos que a pesquisa impõe aos dados (D1/D2)][requisitos da pesquisa]] (texto limpo, rubricas, caminho).
-- CI que valida =dados/= contra o schema em todo PR.
+** DONE [#A] D1 — legis-dados: formato e fundação
+CLOSED: [2026-09-15 ter]
+- [X] Repositório criado: [[https://github.com/wagnermarques/-legis-dados][github.com/wagnermarques/-legis-dados]] (note o
+  hífen inicial no nome — assim mesmo, não é typo). AGPL-3.0-or-later
+  para o código (=pipeline/=, =schema/=, workflows), alinhado com a
+  decisão da seção "Licenciamento" deste roadmap; texto legal é
+  domínio público (Lei nº 9.610/1998, art. 8º, IV) — README explica e
+  aponta fonte/data de captura de cada norma.
+- [X] URLs/URN do Código Penal reconferidas por busca em 2026-09-15
+  (Planalto =del2848compilado.htm= e LexML
+  =urn:lex:br:federal:decreto.lei:1940-12-07;2848=) — registradas em
+  =fontes/br/federal/decreto-lei/1940-2848.yaml=. *Fetch direto do
+  Planalto falhou* (conexão recusada pela ferramenta de busca usada
+  nesta sessão) — confirmado por busca textual em vez de acesso
+  direto; recomenda-se confirmar com um =curl=/navegador de verdade
+  antes do D2 escrever o coletor.
+- [X] Convenção de IDs fechada (=docs/convencao-ids.md=: prefixos por
+  tipo, romanos viram decimais nos incisos, artigos com letra tipo
+  =121-a=, renumeração não muda o =id=) e JSON Schema v1 (JSON Schema
+  2020-12) em quatro arquivos — =norma=, =estrutura= (árvore de
+  divisões, também pesquisável), =dispositivo= (histórico de versões,
+  =pai= obrigatório exceto pra =tipo=artigo=) e =indice= — cobrindo os
+  [[*Requisitos que a pesquisa impõe aos dados (D1/D2)][requisitos da pesquisa]] (texto limpo, rubrica/rótulo/pai sempre
+  preenchidos). Testado com o próprio exemplo do roadmap
+  (=art121_par2_inc6=) e casos que devem falhar (artigo sem =id= em
+  =estrutura.json=, dispositivo não-artigo com =pai= nulo) — 8/8 no
+  smoke test.
+- [X] CI (=.github/workflows/validar.yml=) valida todo arquivo em
+  =dados/= contra o schema (=pipeline/validar-dados.mjs=, com Ajv) em
+  todo PR e push em =main=; sem efeito prático ainda, porque =dados/=
+  só ganha conteúdo real no D2.
 
 ** TODO [#A] D2 — Importador do Código Penal (Planalto)
 - Captura com snapshot bruto versionado (encoding normalizado para UTF-8).
