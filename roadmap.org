@@ -405,13 +405,48 @@ Prefixos: *A* = trabalho no appshell, *D* = =legis-dados=, *L* = =legisreader=.
   diante; licença AGPL-3.0.
 - Este roadmap.
 
-** TODO [#A] A1 — Pontos de extensão do appshell
-- Executado no repositório do appshell (submódulo em =appshell/=), em seis
-  passos (A1.1–A1.6) descritos em [[file:appshell/roadmap.org::*A1 — Uso como submódulo (pontos de extensão)][appshell/roadmap.org]].
+** DONE [#A] A1 — Pontos de extensão do appshell
+CLOSED: [2026-09-15 ter]
+- Passos A1.1–A1.5 executados no repositório do appshell (submódulo em
+  =appshell/=), descritos em [[file:appshell/roadmap.org::*A1 — Uso como submódulo (pontos de extensão)][appshell/roadmap.org]]: router genérico +
+  testes, =createAppShell= com rotas/home configuráveis, drawer/header/
+  footer/título configuráveis, storage com prefixo de build, preset do
+  Vite + =exports=/=peerDependencies=.
 - [X] Submódulo adicionado ([2026-09-15 ter], commit =d4f13af= do shell).
-- [X] Plano do A1 registrado no roadmap do appshell.
-- [X] A1.1 — Testes e router genérico (appshell, não commitado ainda).
-- [ ] A1.2 — =createAppShell= e rotas/views configuráveis.
+- [X] A1.1 — Testes e router genérico.
+- [X] A1.2 — =createAppShell= e rotas/views configuráveis.
+- [X] A1.3 — Drawer, header, footer e título configuráveis.
+- [X] A1.4 — Storage com prefixo (=__APP_STORAGE_PREFIX__=).
+- [X] A1.5 — Preset do Vite, =exports=/=peerDependencies=, assets do app.
+- [X] A1.6 — Validação com consumidor real:
+  - =package.json= da raiz com =workspaces: ["appshell"]= e
+    ="fzl-fund-appshell--lit": "*"=; =npm install= na raiz confirma uma
+    única cópia de =lit= em =node_modules/= (sem =node_modules= aninhado
+    dentro de =appshell/= para essas libs).
+  - =vite.config.js= usa =appshellConfig({ base: '/legisreader/', manifest
+    })= + =mergeConfig=; =src/main.js= usa =createAppShell()= com uma
+    rota de teste (=#/exemplo/:id=), uma seção de drawer ("Normas") e uma
+    ação no cabeçalho (busca) — tudo isso sem editar nada em =appshell/=.
+  - *Bug real encontrado e corrigido no appshell* durante esta validação:
+    =createAppShell= montava o =<app-shell>= via =innerHTML= e só depois
+    atribuía =routes=/=home=/etc.; como =connectedCallback()= já cria o
+    router synchronamente ao entrar no DOM, o router ficava preso à lista
+    de rotas vazia do construtor e nenhuma rota do app jamais casava.
+    Corrigido criando o elemento com =document.createElement()= e
+    setando as propriedades *antes* de conectá-lo (commit no repositório
+    do appshell, fora da numeração A1.x — não fazia sentido reabrir o
+    A1.2 já fechado).
+  - Critérios de aceite, todos verificados no navegador (=npm run build
+    && npm run preview=): demo do shell continua funcionando; rota/seção/
+    ação do legisreader aparecem e funcionam; console sem erro de
+    =customElements.define= duplicado; =dist/index.html= referencia os
+    assets com =/legisreader/= (inclusive a fonte com hash); conta de
+    teste criada grava em =legisreader:auth:session=/=:auth:users=/
+    =:notifications:<id>= no =localStorage=.
+  - =README.md= com a seção "Usando o appshell como submódulo" (=git
+    submodule add=, workspaces, preset, =appshell-generate-icons=,
+    disciplina de atualização do submódulo, =submodules: recursive= para
+    quando existir CI).
 
 ** TODO [#A] D1 — legis-dados: formato e fundação
 - Criar o repositório (AGPL-3.0 para o código; o texto legal é domínio
