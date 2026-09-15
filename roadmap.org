@@ -29,7 +29,7 @@ Três ideias guiam o projeto:
 |-----------------------------+--------------------------------------------------------------+---------------------------------|
 | =fzl-fund-appshell--lit=    | Casca do app: header, drawer, roteador, tema, PWA, auth, notificações | Submódulo git em =appshell/=    |
 | =legisreader= (este)        | Views e serviços do domínio jurídico, configuração do PWA, deploy | —                               |
-| [[https://github.com/wagnermarques/-legis-dados][=legis-dados=]] | Pipeline de coleta e conversão + dados versionados das normas | Artefato publicado (ver [[*Como o app consome os dados][abaixo]]) |
+| [[https://github.com/wagnermarques/legis-dados][=legis-dados=]] | Pipeline de coleta e conversão + dados versionados das normas | Artefato publicado (ver [[*Como o app consome os dados][abaixo]]) |
 
 Por que três: o appshell evolui para toda a família de apps da FzlSoft; os
 dados mudam num ritmo próprio (diário, guiado pelo DOU) e podem virar um
@@ -450,10 +450,11 @@ CLOSED: [2026-09-15 ter]
 
 ** DONE [#A] D1 — legis-dados: formato e fundação
 CLOSED: [2026-09-15 ter]
-- [X] Repositório criado: [[https://github.com/wagnermarques/-legis-dados][github.com/wagnermarques/-legis-dados]] (note o
-  hífen inicial no nome — assim mesmo, não é typo). AGPL-3.0-or-later
-  para o código (=pipeline/=, =schema/=, workflows), alinhado com a
-  decisão da seção "Licenciamento" deste roadmap; texto legal é
+- [X] Repositório criado: [[https://github.com/wagnermarques/legis-dados][github.com/wagnermarques/legis-dados]] (criado
+  inicialmente como =-legis-dados=, com hífen; renomeado no GitHub em
+  seguida — histórico preservado). AGPL-3.0-or-later para o código
+  (=pipeline/=, =schema/=, workflows), alinhado com a decisão da seção
+  "Licenciamento" deste roadmap; texto legal é
   domínio público (Lei nº 9.610/1998, art. 8º, IV) — README explica e
   aponta fonte/data de captura de cada norma.
 - [X] URLs/URN do Código Penal reconferidas por busca em 2026-09-15
