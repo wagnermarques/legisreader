@@ -128,7 +128,7 @@ acrescentar =br/sp/lei/...= mais tarde não muda nada na estrutura.
       "texto": "…",
       "vigenteDesde": "AAAA-MM-DD",
       "vigenteAte": null,          // null = versão vigente
-      "evento": "incluido",        // original | incluido | redacao-dada | revogado | renumerado
+      "evento": "incluido",        // original | incluido | redacao-dada | revogado | renumerado | vetado
       "origem": "urn:lex:br:federal:lei:AAAA-MM-DD;NNNNN",
       "vigenciaConfirmada": false, // true só após revisão humana (vacatio legis, vetos)
       "capturadoEm": "2026-09-15",
@@ -482,13 +482,32 @@ CLOSED: [2026-09-15 ter]
   só ganha conteúdo real no D2.
 
 ** TODO [#A] D2 — Importador do Código Penal (Planalto)
-- Captura com snapshot bruto versionado (encoding normalizado para UTF-8).
-- Parser HTML → =estrutura.json= + =dispositivos.json=: hierarquia,
-  rubricas, penas, notas de alteração, trechos revogados.
-- *Testes golden* (Vitest) sobre snapshots fixos: número de artigos,
-  artigos com letra, dispositivos revogados, idempotência (reprocessar o
-  mesmo snapshot gera exatamente o mesmo JSON).
-- Conferência manual por amostragem de artigos-chave.
+- [X] Captura com snapshot bruto versionado, encoding normalizado pra
+  UTF-8 ([2026-09-15 ter]) — *achado importante*: o HTML do Planalto se
+  declara ISO-8859-1 mas usa bytes Windows-1252 na faixa 0x80–0x9F
+  (travessão, aspas curvas — comum em trechos colados de fontes
+  modernas/Word); converter com =iconv -f ISO-8859-1= corrompe esses
+  bytes em caracteres de controle C1 invisíveis. Sempre =WINDOWS-1252=.
+  Documentado em =legis-dados/docs/parte-especial-pendente.md=.
+- [X] Parser HTML → =estrutura.json= + =dispositivos.json=: hierarquia,
+  rubricas, notas de alteração, trechos revogados — *só a Parte Geral*
+  (Art. 1º–120 + 91-A; a Parte Especial, maior e muito mais densa em
+  revogações por crime específico, fica pra uma próxima rodada de
+  propósito). "Penas" não se aplica à Parte Geral (não há blocos =Pena
+  -= lá — ficam pra quando a Parte Especial for importada).
+- [X] Testes golden (Vitest, 14 testes) sobre o snapshot real: 393
+  dispositivos (121/105/111/56 por tipo), fronteira exata art.120/121,
+  artigo com letra (91-A), ordinal só até o 9º, revogados sem texto
+  residual, *evento "vetado" novo no schema* (descoberto rodando contra
+  texto real: §§ 1º/4º dos arts. 44/45, incluídos por lei mas vetados
+  pela Presidência — nunca chegaram a viger, evento diferente de
+  "incluído"), unicidade de =id=, =pai= sempre válido, árvore de
+  estrutura, idempotência, conformidade com o schema v1.
+- [X] Conferência manual por amostragem: art. 1º, 9º, 10, 26 (+
+  parágrafo único), 91-A, 92 (+ § 2º e um inciso incluído em 2024) —
+  bate com o Código Penal de verdade.
+- [ ] Parte Especial (Art. 121 em diante) — ver
+  =legis-dados/docs/parte-especial-pendente.md= pro plano.
 
 ** TODO [#A] L1 — Esqueleto do legisreader
 - [X] =git submodule add= do appshell; =vite.config.js= usando o preset
