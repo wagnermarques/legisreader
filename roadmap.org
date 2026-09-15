@@ -466,11 +466,28 @@ CLOSED: [2026-09-15 ter]
 - Conferência manual por amostragem de artigos-chave.
 
 ** TODO [#A] L1 — Esqueleto do legisreader
-- =git submodule add= do appshell; =vite.config.js= usando o preset.
-- CI com =actions/checkout= usando =submodules: recursive=; branches
-  =main= (trabalho) e =production= (deploy), como nos demais apps.
-- Build baixando uma release fixada do =legis-dados= para =public/data/=.
-- Aviso de "texto não oficial" e página "Sobre / fontes".
+- [X] =git submodule add= do appshell; =vite.config.js= usando o preset
+  ([2026-09-15 ter], marco A1).
+- [X] Branch =production= criada a partir de =main= e enviada ao remoto
+  ([2026-09-15 ter]) — convenção herdada do biblereaderapp: =main= é a
+  branch de trabalho, =production= é a de deploy (promoção é sempre um
+  push deliberado, nunca automático a partir de =main=).
+- [X] CI (=.github/workflows/deploy.yml=): dispara em push para
+  =production= (+ =workflow_dispatch=); =actions/checkout= com
+  =submodules: recursive= (sem isso o build não acha o pacote
+  =fzl-fund-appshell--lit=); =npm ci= + =npm run build= +
+  =actions/upload-pages-artifact=/=actions/deploy-pages= (GitHub Pages
+  nativo, sem chave de deploy). *Pendente*: configurar em
+  Settings → Pages → Source → "GitHub Actions" no repositório (passo
+  manual único, feito direto no GitHub); o primeiro push em =production=
+  só publica depois disso.
+- [X] Aviso de "texto não oficial" e página "Sobre / fontes"
+  (=src/webcomponents/sobre-view.js=, rota =#/sobre=, seção "Ajuda" no
+  drawer): aviso permanente ("o texto compilado não substitui o
+  publicado no Diário Oficial da União") também resumido na home com
+  link. Verificado no navegador, sem erros no console.
+- [ ] Build baixando uma release fixada do =legis-dados= para
+  =public/data/= — bloqueado até =legis-dados= existir (D1/D2).
 
 ** TODO [#A] L2 — Leitura
 - Sumário navegável da norma no drawer (Parte > Título > Capítulo).

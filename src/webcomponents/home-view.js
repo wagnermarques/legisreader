@@ -1,7 +1,8 @@
 import { LitElement, html, css } from 'lit'
 
-/** Página inicial do legisreader. Só existe conteúdo de verdade a partir do
- *  L1/L2 (roadmap) — por enquanto marca que o appshell está funcionando. */
+/** Página inicial do legisreader. A leitura de verdade começa no L2 —
+ *  por enquanto marca que o appshell está funcionando e aponta pra
+ *  "Sobre e fontes" (aviso permanente de texto não oficial, marco L1). */
 export class HomeView extends LitElement {
   static styles = css`
     :host {
@@ -21,8 +22,9 @@ export class HomeView extends LitElement {
       <h1>LegisReader</h1>
       <p>Leitor de legislação brasileira para estudantes de direito.</p>
       <p>
-        Em construção — este marco (A1) só valida o appshell como submódulo git; a leitura de
-        verdade começa no L1/L2 do roadmap.
+        Em construção — este marco (L1) monta o esqueleto do app; a leitura de verdade começa no
+        L2 do roadmap. O texto compilado aqui não substitui o publicado no Diário Oficial da
+        União — ver <a href="#/sobre">Sobre e fontes</a>.
       </p>
     `
   }
