@@ -10,6 +10,137 @@ deploy), [fzl-fund-appshell--lit](https://github.com/wagnermarques/fzl-fund-apps
 coleta + dados versionados das normas, consumido como release, não
 submódulo — ver `roadmap.org`, seção "Repositórios", para o porquê).
 
+## Como rodar
+
+Requisitos: **Node.js 20+** e npm (testado com Node 22.23.1 / npm 10.9.8).
+
+### 1. Clonar com o submódulo
+
+O app não compila sem o `appshell/` — ele é uma dependência npm que mora no
+submódulo, não no registro público:
+
+```sh
+git clone --recurse-submodules git@github.com:wagnermarques/legisreader.git
+cd legisreader
+```
+
+Se você já clonou sem `--recurse-submodules`:
+
+```sh
+git submodule update --init
+```
+
+### 2. Instalar as dependências
+
+Sempre **na raiz do app**, nunca dentro de `appshell/` (ver a seção seguinte
+para o porquê):
+
+```sh
+npm install
+```
+
+### 3. Rodar em desenvolvimento
+
+```sh
+npm run dev
+```
+
+Na primeira vez isso baixa os dados das normas (~280 KB) antes de subir o
+servidor — ver "Os dados das normas", abaixo.
+
+Abre em **http://localhost:5173/legisreader/** — repare no caminho
+`/legisreader/`: é o `base` do Vite, que existe para o deploy em GitHub
+Pages. A raiz (`http://localhost:5173/`) responde 404, e isso é esperado.
+
+Com hot reload: editar `src/` recarrega o navegador sozinho.
+
+### 4. Conferir o build de produção
+
+O dev server não exercita o service worker nem os caminhos com hash dos
+assets. Antes de promover para `production`, rode o build de verdade:
+
+```sh
+npm run serve
+```
+
+Equivale a `npm run build && npm run preview`: gera `dist/` e serve aquilo
+que o GitHub Pages serviria, também em `/legisreader/`.
+
+Para só gerar o `dist/` sem servir, `npm run build`.
+
+### Resumo dos scripts
+
+| Comando | O que faz |
+|---------|-----------|
+| `npm run dev` | Dev server com hot reload |
+| `npm run build` | Gera `dist/` (produção, com PWA/service worker) |
+| `npm run preview` | Serve o `dist/` já gerado |
+| `npm run serve` | `build` + `preview` |
+| `npx appshell-generate-icons` | Regera `public/icons/*.png` a partir de `public/favicon.svg` |
+
+### Problemas comuns
+
+- **`Failed to resolve import "fzl-fund-appshell--lit"`** — o submódulo está
+  vazio (clone sem `--recurse-submodules`). Rode `git submodule update --init`
+  e depois `npm install` de novo.
+- **`npm install` rodado dentro de `appshell/`** — cria um `node_modules`
+  aninhado e o bundle acaba com duas cópias de `lit`, o que quebra os
+  componentes (`customElements.define` duplicado no console). Apague o
+  `appshell/node_modules/` e rode `npm install` na raiz.
+- **Página em branco na raiz do servidor** — use a URL com `/legisreader/`.
+
+## Os dados das normas
+
+O texto das leis **não** mora neste repositório: vem do
+[legis-dados](https://github.com/wagnermarques/legis-dados), baixado para
+`public/data/` por `scripts/baixar-dados.mjs`. `public/data/` é ignorado pelo
+git — é artefato de build, não fonte.
+
+O ref consumido é **fixado** em `dados.config.json`:
+
+```json
+{ "repo": "wagnermarques/legis-dados", "ref": "3951145d…" }
+```
+
+Fixar é deliberado: os dados mudam num ritmo próprio (diário, guiado pelo
+DOU) e um build só deve mudar de texto legal quando alguém decidir isso.
+Atualizar = trocar o `ref` e commitar. Quando o `legis-dados` passar a
+publicar releases, o `ref` vira uma tag (ex.: `dados-2026.09.15`).
+
+O download roda sozinho antes de `dev` e de `build` (ganchos `predev`/
+`prebuild`), é idempotente e não refaz nada se o pin já estiver em disco:
+
+```sh
+npm run dados              # baixa se necessário
+node scripts/baixar-dados.mjs --force   # rebaixa mesmo assim
+```
+
+Sem rede, ou para testar uma alteração no `legis-dados` antes de commitá-la,
+aponte para um clone local:
+
+```sh
+LEGIS_DADOS_LOCAL=../legis-dados npm run dados
+```
+
+O CI não precisa de nada extra: ele roda `npm run build`, e o `prebuild`
+cuida do download.
+
+### Como o app lê esses dados
+
+- `src/services/dados-service.js` — busca e cacheia `indice.json` e as normas
+  (`norma`/`estrutura`/`dispositivos`). Os JSONs são buscados em runtime, não
+  importados pelo bundler, para ficarem fora do bundle e cacheáveis à parte
+  pelo service worker.
+- `src/webcomponents/norma-view.js` — a leitura. `dispositivos.json` já vem em
+  ordem de documento, então é uma passada linear; `pai` vira indentação e as
+  divisões de `estrutura.json` são intercaladas antes do artigo que abrem.
+- `src/webcomponents/sumario-normas.js` — o sumário do drawer (Parte > Título
+  > Capítulo > Seção).
+
+Rotas: `#/norma/<caminho>` abre a norma, e `?ir=<id>` rola até um dispositivo
+(ex.: `#/norma/br/federal/decreto-lei/1940-2848?ir=art121`). A âncora vai em
+query em vez de um segundo `#` porque o hash já é usado pela rota inteira.
+
 ## Usando o appshell como submódulo
 
 Este app usa o [fzl-fund-appshell--lit](https://github.com/wagnermarques/fzl-fund-appshell--lit)

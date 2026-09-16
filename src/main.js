@@ -2,8 +2,9 @@ import { html } from 'lit'
 import { createAppShell, pattern } from 'fzl-fund-appshell--lit'
 import 'fzl-fund-appshell--lit/styles/theme.css'
 import './webcomponents/home-view.js'
-import './webcomponents/exemplo-view.js'
+import './webcomponents/norma-view.js'
 import './webcomponents/sobre-view.js'
+import './webcomponents/sumario-normas.js'
 
 createAppShell({
   mount: '#app',
@@ -11,13 +12,14 @@ createAppShell({
   home: () => html`<home-view></home-view>`,
 
   routes: [
-    // Rota/seção de teste do marco A1.6 — prova que o legisreader consegue
-    // registrar rota própria sem editar nada em appshell/. Sai assim que
-    // existir conteúdo de leitura de verdade (L2).
+    // O caminho da norma tem vários segmentos (br/federal/decreto-lei/...),
+    // daí o *caminho em vez de :caminho. A âncora vai em ?ir=, não num
+    // segundo '#', que colidiria com o hash da própria rota.
     {
-      name: 'exemplo',
-      match: pattern('exemplo/:id'),
-      render: ({ params }) => html`<exemplo-view .id=${params.id}></exemplo-view>`,
+      name: 'norma',
+      match: pattern('norma/*caminho'),
+      render: ({ params, query }) =>
+        html`<norma-view .caminho=${params.caminho} .ir=${query.ir ?? ''}></norma-view>`,
     },
     { name: 'sobre', match: pattern('sobre'), render: () => html`<sobre-view></sobre-view>` },
   ],
@@ -27,7 +29,7 @@ createAppShell({
         id: 'normas',
         label: 'Normas',
         expanded: true,
-        items: [{ label: 'Exemplo', icon: 'gavel', href: '#/exemplo/1' }],
+        render: () => html`<sumario-normas></sumario-normas>`,
       },
       {
         id: 'ajuda',

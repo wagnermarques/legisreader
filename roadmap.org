@@ -530,15 +530,43 @@ CLOSED: [2026-09-15 ter]
   drawer): aviso permanente ("o texto compilado não substitui o
   publicado no Diário Oficial da União") também resumido na home com
   link. Verificado no navegador, sem erros no console.
-- [ ] Build baixando uma release fixada do =legis-dados= para
-  =public/data/= — bloqueado até =legis-dados= existir (D1/D2).
+- [X] Build baixando os dados do =legis-dados= para =public/data/=
+  ([2026-09-15 ter]): =scripts/baixar-dados.mjs= + pin em
+  =dados.config.json=, ganchos =predev=/=prebuild=, =public/data/= no
+  =.gitignore=. Ainda *não é release*: o =legis-dados= não publica releases,
+  então o pin é o commit =3951145= (tarball do codeload). Trocar por tag
+  quando existir — o script não muda, só o =ref=. Modo offline por
+  =LEGIS_DADOS_LOCAL=<clone>= para desenvolver os dois repositórios lado a
+  lado. Idempotente: não rebaixa se o pin já está em disco.
 
 ** TODO [#A] L2 — Leitura
-- Sumário navegável da norma no drawer (Parte > Título > Capítulo).
-- Leitura por artigo com parágrafos, incisos e alíneas; anterior/próximo.
-- URLs permanentes por dispositivo; copiar/compartilhar citação
+- [X] Sumário navegável da norma no drawer (Parte > Título > Capítulo >
+  Seção) — =src/webcomponents/sumario-normas.js=, via =render= livre da
+  seção do drawer (ponto de extensão que o shell já previa para "árvore de
+  navegação própria do domínio"); 19 divisões no CP Parte Geral.
+- [X] Leitura com parágrafos, incisos e alíneas —
+  =src/webcomponents/norma-view.js=. =dispositivos.json= já vem em ordem de
+  documento, então a renderização é uma passada linear e =pai= vira
+  indentação (não se remonta a árvore). Revogado e vetado saem em itálico
+  acinzentado, para não se confundirem com texto vigente numa batida de
+  olho.
+- [X] Rota =#/norma/<caminho>= com =?ir=<id>= para âncora — a âncora vai em
+  *query*, não num segundo =#=, que colidiria com o hash da própria rota.
+  A rota de teste =#/exemplo/:id= do A1.6 foi removida, como previsto.
+- [X] Verificado no navegador sobre o build de produção: 393/393
+  dispositivos renderizados (nenhum perdido), termina no art. 120, os 2
+  vetados e 4 revogados batem com o que o D2 contou; sumário navega e a
+  âncora rola; console limpo.
+- *Achado*: servidor de SPA (preview do Vite, GitHub Pages) devolve
+  =index.html= com *200* para caminho inexistente, então =resposta.ok= passa
+  e o usuário via "Unexpected token '<'". =dados-service.js= agora checa o
+  =content-type= e diz "Norma não encontrada nos dados publicados".
+- [ ] Anterior/próximo entre artigos.
+- [ ] URLs permanentes por dispositivo; copiar/compartilhar citação
   ("CP, art. 121, § 2º, VI").
-- Tamanho de fonte e tema (herdados do shell); offline com precache do CP.
+- [ ] Tamanho de fonte e tema (herdados do shell); offline com precache do
+  CP — o precache já inclui =data/= (34 entradas, 970 KB), falta conferir o
+  comportamento offline de verdade.
 
 ** TODO [#A] L3 — Pesquisa (ver [[*Pesquisa][Pesquisa]])
 *** TODO L3.1 — Núcleo

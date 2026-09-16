@@ -3,9 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "workspaces": ["appshell"],
+  "workspaces": [
+    "appshell"
+  ],
   "scripts": {
+    "dados": "node scripts/baixar-dados.mjs",
+    "predev": "npm run dados",
     "dev": "vite",
+    "prebuild": "npm run dados",
     "build": "vite build",
     "preview": "vite preview",
     "serve": "npm run build && npm run preview"

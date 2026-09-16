@@ -1,0 +1,5 @@
+{
+  "repo": "wagnermarques/legis-dados",
+  "ref": "3951145d42cce0f575a075551e239e2968e764dd",
+  "descricao": "Pin fixo dos dados consumidos pelo build. Trocar por uma tag (ex.: 'v1') quando o legis-dados passar a publicar releases; ver roadmap.org, secao 'Como o app consome os dados'."
+}
