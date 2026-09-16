@@ -509,7 +509,8 @@ CLOSED: [2026-09-15 ter]
 - [ ] Parte Especial (Art. 121 em diante) — ver
   =legis-dados/docs/parte-especial-pendente.md= pro plano.
 
-** TODO [#A] L1 — Esqueleto do legisreader
+** DONE [#A] L1 — Esqueleto do legisreader
+CLOSED: [2026-09-16 qua]
 - [X] =git submodule add= do appshell; =vite.config.js= usando o preset
   ([2026-09-15 ter], marco A1).
 - [X] Branch =production= criada a partir de =main= e enviada ao remoto
@@ -521,10 +522,25 @@ CLOSED: [2026-09-15 ter]
   =submodules: recursive= (sem isso o build não acha o pacote
   =fzl-fund-appshell--lit=); =npm ci= + =npm run build= +
   =actions/upload-pages-artifact=/=actions/deploy-pages= (GitHub Pages
-  nativo, sem chave de deploy). *Pendente*: configurar em
-  Settings → Pages → Source → "GitHub Actions" no repositório (passo
-  manual único, feito direto no GitHub); o primeiro push em =production=
-  só publica depois disso.
+  nativo, sem chave de deploy).
+- [X] *No ar em* [[https://wagnermarques.github.io/legisreader/][wagnermarques.github.io/legisreader]] ([2026-09-16 qua]):
+  =index.html=, =sw.js=, =manifest.webmanifest= e =data/indice.json= todos
+  respondendo 200, com o =base= =/legisreader/= batendo com o Pages de
+  projeto. O build no CI passou de primeira (submódulo, =npm ci=, download
+  dos dados); o que faltava era só configuração do lado do GitHub, em duas
+  camadas que só apareceram uma de cada vez, porque cada erro escondia o
+  seguinte:
+  1. Settings → Pages → Source → "GitHub Actions" (passo manual único).
+     Sem isso: =Failed to create deployment (status: 404) … Ensure GitHub
+     Pages has been enabled=.
+  2. Settings → Environments → =github-pages= → Deployment branches and
+     tags: incluir =production=. Ativar o Pages cria esse ambiente
+     restrito à branch padrão (=main=); como quem publica aqui é a
+     =production=, o deploy é barrado com =Branch "production" is not
+     allowed to deploy to github-pages due to environment protection
+     rules= — e o GitHub *não diz qual* regra, só a API
+     (=/environments/github-pages/deployment-branch-policies=) revela.
+  Ambos estão documentados no README, seção "Deploy".
 - [X] Aviso de "texto não oficial" e página "Sobre / fontes"
   (=src/webcomponents/sobre-view.js=, rota =#/sobre=, seção "Ajuda" no
   drawer): aviso permanente ("o texto compilado não substitui o
@@ -632,6 +648,10 @@ CLOSED: [2026-09-15 ter]
   formato, o pipeline e a interface realmente são multi-norma.
 
 ** TODO [#C] Futuro
+- Manutenção do CI: subir as actions do =deploy.yml= para =@v5=. Hoje
+  =checkout=, =setup-node=, =upload-artifact= e =deploy-pages= (todas =@v4=)
+  avisam que miram Node 20 e estão sendo forçadas a rodar em Node 24 — só
+  warning, mas a depreciação vira erro em algum momento.
 - Projetos de lei em tramitação que alteram a norma (Câmara/Senado).
 - Controle de constitucionalidade (STF) de forma semiautomática.
 - Remissões entre dispositivos (ex.: "art. 61" citado dentro de outro artigo

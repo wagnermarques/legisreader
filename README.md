@@ -248,11 +248,57 @@ GitHub e o CI quebra.
 
 ### CI
 
-Quando este repositório ganhar um workflow de deploy (marco M5), o checkout
-precisa buscar o submódulo:
+O workflow de deploy (`.github/workflows/deploy.yml`) faz o checkout com
+`submodules: recursive` — sem isso o build falha, porque o `npm ci` não acha
+o pacote `fzl-fund-appshell--lit`:
 
 ```yaml
 - uses: actions/checkout@v4
   with:
     submodules: recursive
 ```
+
+O `.gitmodules` aponta para o submódulo por SSH (`git@github.com:...`), mas
+o `actions/checkout` reescreve para HTTPS usando o `GITHUB_TOKEN`. Isso
+funciona porque o repositório do appshell é **público**; se ele passar a ser
+privado, o checkout do submódulo quebra e passa a exigir um PAT em
+`secrets` (via `token:`) ou uma deploy key.
+
+## Deploy
+
+O app está publicado em
+**<https://wagnermarques.github.io/legisreader/>** (GitHub Pages).
+
+Publicar é um push deliberado para `production` — nunca automático a partir
+de `main`:
+
+```sh
+git checkout production && git merge --ff-only main
+git push origin production
+git checkout main
+```
+
+Isso dispara o workflow `Deploy`, que roda o `npm run build` (com o
+`prebuild` baixando os dados do `legis-dados`) e publica `dist/` pelo Pages
+nativo, sem chave de deploy. Dá para disparar à mão também, por
+**Actions → Deploy → Run workflow**, na branch `production`.
+
+Antes de promover, rode `npm run serve` e confira o build de verdade — o dev
+server não exercita o service worker nem os caminhos com hash dos assets.
+
+### Configuração no GitHub (feita uma vez)
+
+Duas coisas precisam estar ajustadas no repositório; ambas já estão, mas
+ficam registradas porque não são óbvias e cada uma derruba o deploy com uma
+mensagem diferente:
+
+1. **Settings → Pages → Source = "GitHub Actions"** (não "Deploy from a
+   branch"). Sem isso o passo `actions/deploy-pages` falha com
+   `Failed to create deployment (status: 404) … Ensure GitHub Pages has been
+   enabled`.
+2. **Settings → Environments → `github-pages` → Deployment branches and
+   tags**: precisa incluir `production`. Ao ativar o Pages, o GitHub cria
+   esse ambiente restrito à branch padrão (`main`), e como aqui quem publica
+   é a `production`, o deploy é barrado com
+   `Branch "production" is not allowed to deploy to github-pages due to
+   environment protection rules` — sem dizer qual regra.
