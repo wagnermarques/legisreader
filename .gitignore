@@ -16,3 +16,6 @@ dist-ssr
 
 # Dados baixados do legis-dados (ver scripts/baixar-dados.mjs)
 public/data
+
+# Material de referência local (ex.: clone do biblereaderapp)
+temp

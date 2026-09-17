@@ -1,6 +1,7 @@
 import { html } from 'lit'
 import { createAppShell, pattern } from 'fzl-fund-appshell--lit'
 import 'fzl-fund-appshell--lit/styles/theme.css'
+import './webcomponents/grifos-view.js'
 import './webcomponents/home-view.js'
 import './webcomponents/norma-view.js'
 import './webcomponents/sobre-view.js'
@@ -21,6 +22,7 @@ createAppShell({
       render: ({ params, query }) =>
         html`<norma-view .caminho=${params.caminho} .ir=${query.ir ?? ''}></norma-view>`,
     },
+    { name: 'grifos', match: pattern('grifos'), render: () => html`<grifos-view></grifos-view>` },
     { name: 'sobre', match: pattern('sobre'), render: () => html`<sobre-view></sobre-view>` },
   ],
   drawer: {
@@ -30,6 +32,11 @@ createAppShell({
         label: 'Normas',
         expanded: true,
         render: () => html`<sumario-normas></sumario-normas>`,
+      },
+      {
+        id: 'estudo',
+        label: 'Estudo',
+        items: [{ label: 'Meus grifos', icon: 'format_ink_highlighter', href: '#/grifos' }],
       },
       {
         id: 'ajuda',

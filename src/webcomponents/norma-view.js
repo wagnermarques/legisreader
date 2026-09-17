@@ -1,5 +1,79 @@
 import { LitElement, css, html, nothing } from 'lit'
 import { carregarNorma, profundidade, versaoVigente } from '../services/dados-service.js'
+import { estudoService } from '../services/estudo-service.js'
+import {
+  CORES_GRIFO,
+  COR_TEXTO_GRIFO,
+  ancorarGrifo,
+  aparar,
+  corGrifo,
+  segmentarTexto,
+} from '../grifos.js'
+
+// Quanto a seleção precisa ficar parada antes de a barra de cores reagir. Não
+// é espera pela seleção final: só evita redesenhar a cada pixel do arrasto.
+const ESPERA_SELECAO_MS = 120
+// Folga entre a seleção e o topo da barra ao rolar a seleção para fora de
+// baixo dela.
+const FOLGA_BARRA = 16
+// Quanto tempo o dispositivo aberto por âncora fica tingido.
+const DESTAQUE_ANCORA_MS = 1600
+
+/** Ancestral rolável mais próximo, atravessando shadow roots. */
+function ancestralRolavel(el) {
+  let no = el.parentNode ?? el.host
+  while (no) {
+    if (no.nodeType === Node.ELEMENT_NODE) {
+      const overflow = getComputedStyle(no).overflowY
+      if (/(auto|scroll)/.test(overflow) && no.scrollHeight > no.clientHeight) return no
+    }
+    no = no.parentNode ?? no.host
+  }
+  return null
+}
+
+/** Posição de (no, offset) em caracteres, contada do início do texto de `raiz`. */
+function posicaoEm(raiz, no, offset) {
+  const range = document.createRange()
+  range.selectNodeContents(raiz)
+  try {
+    range.setEnd(no, offset)
+  } catch {
+    return null
+  }
+  return range.toString().length
+}
+
+/**
+ * A parte de `range` que cai dentro do texto de um dispositivo, em posições
+ * relativas a esse texto, ou null se só sobrar espaço. O primeiro e o último
+ * dispositivo de um arrasto mantêm a borda da seleção; os do meio entram
+ * inteiros.
+ */
+function recortarNoDispositivo(range, el) {
+  const recorte = document.createRange()
+  recorte.selectNodeContents(el)
+  if (recorte.compareBoundaryPoints(Range.START_TO_START, range) < 0) {
+    recorte.setStart(range.startContainer, range.startOffset)
+  }
+  if (recorte.compareBoundaryPoints(Range.END_TO_END, range) > 0) {
+    recorte.setEnd(range.endContainer, range.endOffset)
+  }
+  const inicio = posicaoEm(el, recorte.startContainer, recorte.startOffset)
+  const fim = posicaoEm(el, recorte.endContainer, recorte.endOffset)
+  if (inicio === null || fim === null) return null
+
+  const texto = el.textContent
+  const posicoes = aparar(texto, inicio, fim)
+  if (!posicoes) return null
+  return {
+    dispositivo: el.dataset.disp,
+    vigenteDesde: el.dataset.vigenteDesde,
+    inicio: posicoes.inicio,
+    fim: posicoes.fim,
+    texto: texto.slice(posicoes.inicio, posicoes.fim),
+  }
+}
 
 /**
  * Leitura de uma norma inteira.
@@ -19,6 +93,9 @@ export class NormaView extends LitElement {
     _estado: { state: true },
     _dados: { state: true },
     _erro: { state: true },
+    _grifos: { state: true },
+    _selecao: { state: true },
+    _editando: { state: true },
   }
 
   static styles = css`
@@ -124,6 +201,88 @@ export class NormaView extends LitElement {
     .erro {
       color: var(--md-sys-color-error, #b3261e);
     }
+
+    .dispositivo.destaque {
+      animation: destaque ${DESTAQUE_ANCORA_MS}ms ease-out;
+    }
+    @keyframes destaque {
+      from {
+        background: var(--md-sys-color-secondary-container, #e8def8);
+      }
+      to {
+        background: transparent;
+      }
+    }
+
+    mark {
+      border-radius: 3px;
+      padding: 1px 0;
+      cursor: pointer;
+    }
+
+    /* Enquanto a barra de cores está aberta, o fim da norma precisa poder
+       rolar para cima dela. */
+    :host([data-barra-aberta]) {
+      padding-bottom: 120px;
+    }
+
+    .barra-grifo {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      z-index: 5;
+      box-sizing: border-box;
+      width: min(100%, 44rem);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      background: var(--md-sys-color-surface, #fffbfe);
+      color: var(--md-sys-color-on-surface, #1d1b20);
+      border-top: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.18);
+    }
+
+    .cores {
+      display: flex;
+      flex: 1;
+      gap: 4px;
+      overflow-x: auto;
+    }
+
+    .cor {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      width: 72px;
+      padding: 4px 0;
+      border: 0;
+      border-radius: 8px;
+      background: none;
+      color: inherit;
+      font: inherit;
+      font-size: 0.7rem;
+      line-height: 1.2;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .amostra {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      box-sizing: border-box;
+    }
+
+    .cor[aria-pressed='true'] .amostra {
+      outline: 3px solid var(--md-sys-color-primary, #1f3a5f);
+      outline-offset: 2px;
+    }
   `
 
   constructor() {
@@ -133,6 +292,44 @@ export class NormaView extends LitElement {
     this._estado = 'carregando'
     this._dados = null
     this._erro = null
+    this._grifos = []
+    this._selecao = null
+    this._editando = null
+
+    // Um long-press no Android é tratado pela UI de seleção do sistema e
+    // termina em touchcancel, não em touchend: evento de toque nunca dispara
+    // justo no gesto que seleciona texto. selectionchange é o sinal que o
+    // navegador emite qualquer que seja a forma de entrada.
+    this._aoMudarSelecao = () => {
+      clearTimeout(this._timerSelecao)
+      this._timerSelecao = setTimeout(() => this._acompanharSelecao(), ESPERA_SELECAO_MS)
+    }
+    // Editar um grifo existente não tem seleção para desfazer, então um
+    // toque fora da barra é o que a fecha.
+    this._aoTocarDocumento = (evento) => {
+      if (!this._editando) return
+      const barra = this.renderRoot.querySelector('.barra-grifo')
+      if (barra && evento.composedPath().includes(barra)) return
+      this._editando = null
+    }
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    document.addEventListener('selectionchange', this._aoMudarSelecao)
+    document.addEventListener('pointerdown', this._aoTocarDocumento, true)
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    document.removeEventListener('selectionchange', this._aoMudarSelecao)
+    document.removeEventListener('pointerdown', this._aoTocarDocumento, true)
+    clearTimeout(this._timerSelecao)
+    clearTimeout(this._timerDestaque)
+  }
+
+  updated() {
+    this.toggleAttribute('data-barra-aberta', this._barraAberta)
   }
 
   willUpdate(changed) {
@@ -148,11 +345,16 @@ export class NormaView extends LitElement {
   async _carregar(caminho) {
     this._estado = 'carregando'
     this._erro = null
+    this._selecao = null
+    this._editando = null
     try {
       const dados = await carregarNorma(caminho)
       // Uma navegação mais nova pode ter começado enquanto esta esperava.
       if (this.caminho !== caminho) return
       this._dados = dados
+      this._porId = new Map(dados.dispositivos.map((d) => [d.id, d]))
+      this._divisoes = this._divisoesPorArtigo(dados.estrutura)
+      this._grifos = estudoService.grifosDaNorma(caminho)
       this._estado = 'pronto'
       // Depois da primeira pintura, honra o ?ir= da URL (ex.: vindo do
       // sumário). A âncora vai em query, não num segundo '#', porque o
@@ -164,11 +366,6 @@ export class NormaView extends LitElement {
       this._erro = erro.message
       this._estado = 'erro'
     }
-  }
-
-  /** Índice dos dispositivos por id, para resolver `pai` em O(1). */
-  get _porId() {
-    return new Map(this._dados.dispositivos.map((d) => [d.id, d]))
   }
 
   /**
@@ -206,7 +403,156 @@ export class NormaView extends LitElement {
 
   _irParaAncora() {
     if (!this.ir) return
-    this.renderRoot.getElementById(this.ir)?.scrollIntoView({ block: 'start' })
+    const el = this.renderRoot.getElementById(this.ir)
+    if (!el) return
+    el.scrollIntoView({ block: 'start' })
+    // Numa norma longa, cair no lugar certo sem nenhuma pista de qual
+    // dispositivo era o alvo obriga a procurar. Recolocar a classe no mesmo
+    // frame não reiniciaria a animação.
+    el.classList.remove('destaque')
+    requestAnimationFrame(() => el.classList.add('destaque'))
+    clearTimeout(this._timerDestaque)
+    this._timerDestaque = setTimeout(() => el.classList.remove('destaque'), DESTAQUE_ANCORA_MS)
+  }
+
+  /**
+   * O range selecionado dentro desta view, ou null. A seleção dentro de
+   * shadow DOM não é exposta do mesmo jeito em todo navegador: o Chromium
+   * tem shadowRoot.getSelection(); os demais, getComposedRanges(), que
+   * precisa receber o shadow root para não devolver o range recortado no
+   * host.
+   */
+  _rangeSelecionado() {
+    const raiz = this.renderRoot
+    if (raiz.getSelection) {
+      const sel = raiz.getSelection()
+      return sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null
+    }
+    const sel = document.getSelection()
+    if (!sel || !sel.rangeCount) return null
+    if (sel.getComposedRanges) {
+      let ranges
+      try {
+        ranges = sel.getComposedRanges({ shadowRoots: [raiz] })
+      } catch {
+        ranges = sel.getComposedRanges(raiz) // assinatura antiga do Safari
+      }
+      const estatico = ranges[0]
+      if (!estatico || estatico.collapsed) return null
+      const range = document.createRange()
+      range.setStart(estatico.startContainer, estatico.startOffset)
+      range.setEnd(estatico.endContainer, estatico.endOffset)
+      return range
+    }
+    return sel.isCollapsed ? null : sel.getRangeAt(0)
+  }
+
+  /**
+   * A seleção atual como um pedaço por dispositivo que ela toca, ou null se
+   * não houver nada grifável (seleção vazia, ou só em rótulos e rubricas).
+   */
+  _pedacosSelecionados() {
+    const range = this._rangeSelecionado()
+    if (!range) return null
+    const pedacos = []
+    for (const el of this.renderRoot.querySelectorAll('.texto-disp')) {
+      if (!range.intersectsNode(el)) continue
+      const pedaco = recortarNoDispositivo(range, el)
+      if (pedaco) pedacos.push(pedaco)
+    }
+    return pedacos.length ? pedacos : null
+  }
+
+  get _barraAberta() {
+    return !!(this._selecao || this._editando)
+  }
+
+  /**
+   * Acompanha a seleção ao vivo em vez de esperar a final: a barra pode
+   * aparecer enquanto o estudante ainda arrasta a alça, porque o grifo é
+   * recortado do que estiver selecionado no toque na cor.
+   */
+  _acompanharSelecao() {
+    if (this._estado !== 'pronto') return
+    const pedacos = this._pedacosSelecionados()
+    if (pedacos) {
+      const estavaAberta = this._barraAberta
+      this._editando = null
+      this._selecao = pedacos
+      if (!estavaAberta) this._mostrarAcimaDaBarra(this._rangeSelecionado()?.getBoundingClientRect())
+    } else if (this._selecao) {
+      this._selecao = null
+    }
+  }
+
+  _editarGrifo(evento, grifo) {
+    // Um toque que termina uma seleção sobre um grifo é seleção, não edição.
+    if (this._rangeSelecionado()) return
+    evento.stopPropagation()
+    this._selecao = null
+    this._editando = grifo
+    this._mostrarAcimaDaBarra(evento.currentTarget.getBoundingClientRect())
+  }
+
+  /**
+   * Mantém a seleção viva durante o toque na barra: a ação padrão de um
+   * pointerdown fora da seleção é desfazê-la, e não sobraria nada para grifar
+   * quando o click chegasse.
+   */
+  _aoPressionarBarra(evento) {
+    evento.preventDefault()
+  }
+
+  _aplicarCor(corId) {
+    if (this._editando) {
+      estudoService.recolorirGrupo(this._editando.grupoId, corId)
+      this._editando = null
+    } else {
+      // Relê em vez de confiar no que abriu a barra: alças arrastadas depois
+      // ainda caem nas palavras certas.
+      const pedacos = this._pedacosSelecionados() ?? this._selecao
+      if (!pedacos) return
+      estudoService.adicionarGrifo(this.caminho, corId, pedacos)
+      document.getSelection()?.removeAllRanges()
+      this._selecao = null
+    }
+    this._grifos = estudoService.grifosDaNorma(this.caminho)
+  }
+
+  _removerGrifo() {
+    if (this._editando) estudoService.removerGrupo(this._editando.grupoId)
+    this._editando = null
+    this._grifos = estudoService.grifosDaNorma(this.caminho)
+  }
+
+  /** Rola o que a barra cobriria de volta para a vista, depois que ela aparece. */
+  async _mostrarAcimaDaBarra(retangulo) {
+    if (!retangulo) return
+    await this.updateComplete
+    const barra = this.renderRoot.querySelector('.barra-grifo')
+    if (!barra) return
+    const sobreposicao = retangulo.bottom - barra.getBoundingClientRect().top + FOLGA_BARRA
+    if (sobreposicao > 0) {
+      ;(ancestralRolavel(this) ?? window).scrollBy({ top: sobreposicao, behavior: 'smooth' })
+    }
+  }
+
+  /**
+   * Grifos desta norma já ancorados no texto vigente, por dispositivo. Os
+   * que não se acham mais (a redação mudou) não são pintados — aparecem só
+   * no inventário, marcados como texto alterado.
+   */
+  _grifosPorDispositivo() {
+    const mapa = new Map()
+    for (const grifo of this._grifos) {
+      const disp = this._porId.get(grifo.dispositivo)
+      if (!disp) continue
+      const posicoes = ancorarGrifo(grifo, versaoVigente(disp).texto)
+      if (!posicoes) continue
+      if (!mapa.has(disp.id)) mapa.set(disp.id, [])
+      mapa.get(disp.id).push({ ...grifo, ...posicoes })
+    }
+    return mapa
   }
 
   render() {
@@ -220,9 +566,8 @@ export class NormaView extends LitElement {
       `
     }
 
-    const { norma, estrutura, dispositivos } = this._dados
-    const porId = this._porId
-    const divisoes = this._divisoesPorArtigo(estrutura)
+    const { norma, dispositivos } = this._dados
+    const grifos = this._grifosPorDispositivo()
 
     return html`
       <h1>${norma.nome}</h1>
@@ -233,16 +578,17 @@ export class NormaView extends LitElement {
         em ${norma.capturadoEm}. Não substitui o publicado no Diário Oficial da União —
         ver <a href="#/sobre">Sobre e fontes</a>.
       </p>
-      ${dispositivos.map((d) => this._renderDispositivo(d, porId, divisoes))}
+      ${dispositivos.map((d) => this._renderDispositivo(d, grifos.get(d.id) ?? []))}
+      ${this._renderBarra()}
     `
   }
 
-  _renderDispositivo(disp, porId, divisoes) {
+  _renderDispositivo(disp, grifos) {
     const versao = versaoVigente(disp)
-    const nivel = profundidade(disp, porId)
+    const nivel = profundidade(disp, this._porId)
 
     return html`
-      ${(divisoes.get(disp.id) ?? []).map(
+      ${(this._divisoes.get(disp.id) ?? []).map(
         (div) => html`
           <div class="divisao" data-tipo=${div.tipo}>
             <div class="rotulo">${div.rotulo}</div>
@@ -253,8 +599,64 @@ export class NormaView extends LitElement {
       ${disp.rubrica ? html`<span class="rubrica-artigo">${disp.rubrica}</span>` : nothing}
       <p class="dispositivo" id=${disp.id} data-nivel=${nivel} data-evento=${versao.evento}>
         <span class="rotulo-disp">${disp.rotulo}</span>
-        ${versao.texto}
+        <!-- Sem espaço dentro do span: as posições dos grifos são contadas
+             sobre o textContent dele, que tem de ser exatamente versao.texto. -->
+        <span class="texto-disp" data-disp=${disp.id} data-vigente-desde=${versao.vigenteDesde}
+          >${this._renderTexto(versao.texto, grifos)}</span
+        >
       </p>
+    `
+  }
+
+  _renderTexto(texto, grifos) {
+    if (!grifos.length) return texto
+    return segmentarTexto(texto, grifos).map(({ texto: trecho, grifo }) => {
+      if (!grifo) return trecho
+      const cor = corGrifo(grifo.cor)
+      // O significado da cor vai no title: o destaque não pode depender só
+      // de enxergar a cor.
+      return html`<mark
+        style="background:${cor.fundo};color:${COR_TEXTO_GRIFO}"
+        title="${estudoService.rotuloDaCor(cor)} — toque para recolorir ou remover"
+        @click=${(e) => this._editarGrifo(e, grifo)}
+        >${trecho}</mark
+      >`
+    })
+  }
+
+  _renderBarra() {
+    if (!this._barraAberta) return nothing
+    const atual = this._editando?.cor
+    return html`
+      <div
+        class="barra-grifo"
+        role="toolbar"
+        aria-label=${this._editando ? 'Editar grifo' : 'Grifar trecho'}
+        @pointerdown=${this._aoPressionarBarra}
+      >
+        <div class="cores">
+          ${CORES_GRIFO.map((cor) => {
+            const rotulo = estudoService.rotuloDaCor(cor)
+            return html`
+              <button
+                type="button"
+                class="cor"
+                aria-label="${cor.nome}: ${rotulo}"
+                aria-pressed=${this._editando ? String(atual === cor.id) : nothing}
+                @click=${() => this._aplicarCor(cor.id)}
+              >
+                <span class="amostra" style="background:${cor.fundo}"></span>
+                <span>${rotulo}</span>
+              </button>
+            `
+          })}
+        </div>
+        ${this._editando
+          ? html`<md-icon-button aria-label="Remover grifo" @click=${this._removerGrifo}>
+              <md-icon>delete</md-icon>
+            </md-icon-button>`
+          : nothing}
+      </div>
     `
   }
 }
