@@ -217,8 +217,9 @@ createAppShell({
 })
 ```
 
-Ver `src/main.js` deste repositório para o exemplo real (ainda uma rota de
-teste do marco A1 — a leitura de verdade começa no L1/L2 do roadmap).
+Ver `src/main.js` deste repositório para o exemplo real: as rotas de
+leitura (`#/norma/*caminho`), o inventário de grifos e a config de
+analytics (ver "Analytics e privacidade", abaixo).
 
 ### Ícones
 
@@ -263,6 +264,41 @@ o `actions/checkout` reescreve para HTTPS usando o `GITHUB_TOKEN`. Isso
 funciona porque o repositório do appshell é **público**; se ele passar a ser
 privado, o checkout do submódulo quebra e passa a exigir um PAT em
 `secrets` (via `token:`) ou uma deploy key.
+
+## Analytics e privacidade (LGPD)
+
+O appshell traz o Google Analytics 4, mas sem id próprio: a propriedade é
+deste app e o Measurement ID chega pela config, em `src/main.js`:
+
+```js
+analytics: {
+  id: import.meta.env.VITE_GA4_MEASUREMENT_ID,
+  cookiePrefix: __APP_STORAGE_PREFIX__,
+}
+```
+
+Sem a variável definida — o caso normal em desenvolvimento — o analytics
+fica desligado e **nenhuma requisição sai do navegador**. Para medir
+localmente, copie `.env.example` para `.env.local` e preencha
+`VITE_GA4_MEASUREMENT_ID` (`G-XXXXXXXXXX`, em Admin > Fluxos de dados).
+
+No deploy o valor vem de uma *variável* do repositório (**Settings >
+Secrets and variables > Actions > Variables**, nome
+`VITE_GA4_MEASUREMENT_ID`), repassada ao `npm run build` pelo workflow.
+Variável e não secret porque o Measurement ID é público: ele vai no
+bundle. Enquanto a variável não existir, o build publicado sai sem
+medição.
+
+Com o id preenchido, o shell pede consentimento antes de qualquer coisa:
+o `gtag.js` só é carregado depois de "Aceitar" no banner, e a escolha —
+guardada no `localStorage` sob o prefixo do app — pode ser trocada quando
+o estudante quiser em **Config > Privacidade**. Um id preenchido fora do
+formato `G-…` derruba o build de propósito: id errado só se descobre
+semanas depois, com o relatório vazio.
+
+Nada disso muda o local-first: os dados de estudo (grifos, notas) continuam
+só no navegador e nunca são enviados ao Google — o que se mede é qual tela
+foi aberta.
 
 ## Deploy
 

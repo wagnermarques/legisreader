@@ -448,6 +448,32 @@ CLOSED: [2026-09-15 ter]
     disciplina de atualização do submódulo, =submodules: recursive= para
     quando existir CI).
 
+** DONE [#A] A2 — Analytics e consentimento (LGPD) no legisreader
+CLOSED: [2026-09-18 sex]
+- Submódulo atualizado de =42853d6= para =ed3f5c0=, trazendo três marcos
+  do shell (detalhes em [[file:appshell/roadmap.org][appshell/roadmap.org]]): A2 analytics GA4 por
+  aplicação, A2.1 consentimento com Consent Mode v2 e A3 redefinição/
+  troca de senha.
+- [X] =src/main.js= passa =analytics: { id:
+  import.meta.env.VITE_GA4_MEASUREMENT_ID, cookiePrefix:
+  __APP_STORAGE_PREFIX__ }=. A propriedade do GA4 é deste app — o shell
+  não tem id próprio. Sem a variável (o normal em desenvolvimento) o
+  analytics não liga e nada sai do navegador.
+- [X] =.env.example= documenta a variável; =.env.local= já estava no
+  =.gitignore=.
+- [X] Workflow de deploy passa =VITE_GA4_MEASUREMENT_ID= a partir de
+  =vars= do repositório (variável, não secret: o Measurement ID é público
+  e vai no bundle). *Pendente do lado do GitHub*: criar a variável em
+  Settings > Secrets and variables > Actions > Variables quando a
+  propriedade do GA4 existir. Até lá o build sai sem medição.
+- [X] Verificado no navegador com um id de teste (=npm run build &&
+  npm run preview=): nada é requisitado antes da resposta; "Aceitar"
+  carrega o =gtag.js= e manda um =page_view= com =route_name=home= e
+  =gcs=G101=; Config > Privacidade desliga de volta.
+- Auth: nada a fazer por ora. O legisreader é local-first e não passa
+  =auth=, então segue o provedor local de demonstração do shell; as telas
+  de esqueci/alterar senha só valem quando houver backend (M4 do shell).
+
 ** DONE [#A] D1 — legis-dados: formato e fundação
 CLOSED: [2026-09-15 ter]
 - [X] Repositório criado: [[https://github.com/wagnermarques/legis-dados][github.com/wagnermarques/legis-dados]] (criado

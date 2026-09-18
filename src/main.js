@@ -12,6 +12,17 @@ createAppShell({
   title: 'LegisReader',
   home: () => html`<home-view></home-view>`,
 
+  // Propriedade do GA4 deste app (o appshell não tem id próprio). Sem a
+  // variável definida — o caso normal em desenvolvimento — o analytics não
+  // liga e nenhuma requisição sai do navegador. O consentimento (LGPD) é
+  // pedido pelo shell antes de qualquer carga do gtag; a escolha fica no
+  // localStorage sob o mesmo prefixo dos dados de estudo, em Config >
+  // Privacidade.
+  analytics: {
+    id: import.meta.env.VITE_GA4_MEASUREMENT_ID,
+    cookiePrefix: __APP_STORAGE_PREFIX__,
+  },
+
   routes: [
     // O caminho da norma tem vários segmentos (br/federal/decreto-lei/...),
     // daí o *caminho em vez de :caminho. A âncora vai em ?ir=, não num
