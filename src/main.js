@@ -39,9 +39,11 @@ createAppShell({
   drawer: {
     sections: [
       {
+        // Sem expanded: o sumário de uma norma inteira é longo demais para
+        // abrir por cima das outras seções — quem abre o drawer precisa ver
+        // primeiro o que existe nele.
         id: 'normas',
         label: 'Normas',
-        expanded: true,
         render: () => html`<sumario-normas></sumario-normas>`,
       },
       {
