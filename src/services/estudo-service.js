@@ -5,11 +5,13 @@
  * para que uma fila de envio possa ser acrescentada sem mudar o formato.
  *
  * Por enquanto só grifos:
- *   { id, grupoId, norma, dispositivo, vigenteDesde, inicio, fim, cor, texto, criadoEm }
+ *   { id, grupoId, norma, dispositivo, vigenteDesde, inicio, fim, cor, texto, criadoEm,
+ *     nota?, notaEditadaEm? }
  * `norma` é o caminho da norma no índice; `inicio`/`fim` são posições dentro
  * de `versao.texto` da versão `vigenteDesde`. Um grifo arrastado por vários
  * dispositivos é salvo como um registro por dispositivo, todos com o mesmo
- * `grupoId` — recolorir ou remover age sobre o grupo inteiro.
+ * `grupoId` — recolorir, anotar ou remover age sobre o grupo inteiro.
+ * `nota` é texto livre do estudante sobre o trecho; ausente quando não há.
  */
 
 // Mesmo prefixo que o appshell usa nas chaves dele (constante de build
@@ -87,6 +89,24 @@ export const estudoService = {
   recolorirGrupo(grupoId, cor) {
     const lista = this.listarGrifos()
     for (const g of lista) if (g.grupoId === grupoId) g.cor = cor
+    gravarJson(CHAVES.grifos, lista)
+  },
+
+  /** Nota vazia (ou só espaço) remove a nota do grifo. */
+  anotarGrupo(grupoId, nota) {
+    const lista = this.listarGrifos()
+    const limpa = nota.trim()
+    const editadaEm = new Date().toISOString()
+    for (const g of lista) {
+      if (g.grupoId !== grupoId) continue
+      if (limpa) {
+        g.nota = limpa
+        g.notaEditadaEm = editadaEm
+      } else {
+        delete g.nota
+        delete g.notaEditadaEm
+      }
+    }
     gravarJson(CHAVES.grifos, lista)
   },
 

@@ -16,6 +16,7 @@ export class GrifosView extends LitElement {
     _normas: { state: true },
     _filtro: { state: true },
     _renomeando: { state: true },
+    _anotando: { state: true },
     _erro: { state: true },
   }
 
@@ -118,11 +119,55 @@ export class GrifosView extends LitElement {
       background: var(--md-sys-color-surface-variant, #e7e0ec);
     }
 
-    .grifo a {
+    .corpo {
       flex: 1;
       min-width: 0;
+    }
+
+    .grifo a {
+      display: block;
       color: inherit;
       text-decoration: none;
+    }
+
+    /* A nota é do estudante, não da lei: fica visualmente separada do
+       trecho citado. */
+    .nota {
+      display: flex;
+      gap: 6px;
+      margin: 6px 0 0;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: var(--md-sys-color-surface-container, #f3edf7);
+      font-size: 0.9rem;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .nota span {
+      white-space: pre-wrap;
+    }
+
+    .nota md-icon {
+      flex: 0 0 auto;
+      --md-icon-size: 18px;
+      color: var(--md-sys-color-on-surface-variant, #49454f);
+    }
+
+    .editor-nota {
+      margin-top: 8px;
+    }
+
+    .editor-nota md-outlined-text-field {
+      width: 100%;
+      margin: 0;
+    }
+
+    .editor-nota .acoes {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
     }
 
     .trecho {
@@ -159,6 +204,7 @@ export class GrifosView extends LitElement {
     this._normas = null
     this._filtro = null
     this._renomeando = null
+    this._anotando = null
     this._erro = null
   }
 
@@ -225,6 +271,7 @@ export class GrifosView extends LitElement {
             : `${norma?.norma.nome ?? primeiro.norma} (dispositivo ${primeiro.dispositivo})`) +
           (outros > 0 ? ` e mais ${outros} ${outros === 1 ? 'dispositivo' : 'dispositivos'}` : ''),
         alterado,
+        nota: primeiro.nota ?? '',
         chaveOrdem: [primeiro.norma, ordem(primeiro), primeiro.inicio],
       })
     }
@@ -255,6 +302,27 @@ export class GrifosView extends LitElement {
   _teclaNoRotulo(evento, corId) {
     if (evento.key === 'Enter') this._salvarRotulo(evento, corId)
     else if (evento.key === 'Escape') this._renomeando = null
+  }
+
+  async _comecarAnotar(grupoId) {
+    this._anotando = grupoId
+    await this.updateComplete
+    // Campo recém-criado: o textarea interno só existe depois da renderização dele.
+    const campo = this.renderRoot.querySelector('.editor-nota md-outlined-text-field')
+    await campo?.updateComplete
+    campo?.focus()
+  }
+
+  _salvarNota(grupoId) {
+    const campo = this.renderRoot.querySelector('.editor-nota md-outlined-text-field')
+    if (campo) estudoService.anotarGrupo(grupoId, campo.value)
+    this._anotando = null
+    this._grifos = estudoService.listarGrifos()
+  }
+
+  _teclaNaNota(evento, grupoId) {
+    if (evento.key === 'Escape') this._anotando = null
+    else if (evento.key === 'Enter' && (evento.ctrlKey || evento.metaKey)) this._salvarNota(grupoId)
   }
 
   _remover(grupoId) {
@@ -343,19 +411,53 @@ export class GrifosView extends LitElement {
     `
   }
 
+  _renderEditorNota(item) {
+    return html`
+      <div class="editor-nota">
+        <md-outlined-text-field
+          type="textarea"
+          rows="3"
+          label="Nota sobre o trecho"
+          supporting-text="Vazio remove a nota"
+          .value=${item.nota}
+          @keydown=${(e) => this._teclaNaNota(e, item.grupoId)}
+        ></md-outlined-text-field>
+        <div class="acoes">
+          <md-text-button @click=${() => (this._anotando = null)}>Cancelar</md-text-button>
+          <md-filled-button @click=${() => this._salvarNota(item.grupoId)}>Salvar</md-filled-button>
+        </div>
+      </div>
+    `
+  }
+
   _renderItem(item, cor) {
     return html`
       <div class="grifo" style="border-left-color:${cor.fundo}">
-        <a href="#/norma/${item.caminho}?ir=${item.ancora}">
-          <span class="trecho">“${item.texto}”</span>
-          <span class="onde"
-            >${item.onde}${item.alterado
-              ? html`<span class="alterado" title="A redação mudou desde que o trecho foi grifado"
-                  >Texto alterado</span
-                >`
-              : nothing}</span
-          >
-        </a>
+        <div class="corpo">
+          <a href="#/norma/${item.caminho}?ir=${item.ancora}">
+            <span class="trecho">“${item.texto}”</span>
+            <span class="onde"
+              >${item.onde}${item.alterado
+                ? html`<span class="alterado" title="A redação mudou desde que o trecho foi grifado"
+                    >Texto alterado</span
+                  >`
+                : nothing}</span
+            >
+          </a>
+          ${this._anotando === item.grupoId
+            ? this._renderEditorNota(item)
+            : item.nota
+              ? html`<p class="nota">
+                  <md-icon aria-label="Nota">sticky_note_2</md-icon><span>${item.nota}</span>
+                </p>`
+              : nothing}
+        </div>
+        <md-icon-button
+          aria-label=${item.nota ? 'Editar nota' : 'Anotar'}
+          @click=${() => this._comecarAnotar(item.grupoId)}
+        >
+          <md-icon>${item.nota ? 'edit_note' : 'note_add'}</md-icon>
+        </md-icon-button>
         <md-icon-button aria-label="Remover grifo" @click=${() => this._remover(item.grupoId)}>
           <md-icon>delete</md-icon>
         </md-icon-button>

@@ -627,6 +627,24 @@ CLOSED: [2026-09-16 qua]
 ** TODO [#B] L4 — Estudo (local)
 - Favoritos, grifos coloridos, anotações e progresso de leitura em
   =localStorage= (padrão do storage-service), sem conta.
+- [X] Grifos coloridos: seleção + barra de cores na leitura, inventário
+  =#/grifos= agrupado por cor (cor com significado renomeável), ancorados
+  em id do dispositivo + posições em =versao.texto= e reancorados quando a
+  redação muda.
+- [X] Nota livre no grifo (decidido em 2026-09-17):
+  - Campo opcional =nota= (texto puro, quebras de linha preservadas) e
+    =notaEditadaEm= no registro; gravado no grupo inteiro (=grupoId=), como
+    a cor. Nota vazia remove o campo; grifos antigos seguem válidos sem
+    migração.
+  - Leitura: ícone de nota depois do último pedaço do grupo (uma vez por
+    grifo, não depende de cor); =title= do grifo mostra o início da nota.
+    A barra de edição ganha o botão *Nota*, com campo de várias linhas.
+  - Ao grifar, a barra continua aberta no modo de edição do grifo novo,
+    para anotar na hora sem um segundo toque.
+  - Inventário: a nota aparece sob o trecho e é editável ali mesmo.
+  - A nota do grifo é presa ao *trecho*; a "anotação por dispositivo"
+    continua sendo outra coisa, presa ao artigo inteiro. Pesquisa nas
+    notas fica para o L3.6.
 
 ** TODO [#B] L5 — Histórico na interface
 - "Texto em vigor na data…", linha do tempo do dispositivo, comparação

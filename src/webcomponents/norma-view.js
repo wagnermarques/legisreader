@@ -1,4 +1,4 @@
-import { LitElement, css, html, nothing } from 'lit'
+import { LitElement, css, html, nothing, unsafeCSS } from 'lit'
 import { carregarNorma, profundidade, versaoVigente } from '../services/dados-service.js'
 import { estudoService } from '../services/estudo-service.js'
 import {
@@ -18,6 +18,22 @@ const ESPERA_SELECAO_MS = 120
 const FOLGA_BARRA = 16
 // Quanto tempo o dispositivo aberto por âncora fica tingido.
 const DESTAQUE_ANCORA_MS = 1600
+// Quanto da nota cabe no title do grifo.
+const RESUMO_NOTA = 80
+
+// Ícone de nota em SVG, não em <md-icon>: ele fica dentro de .texto-disp, e
+// a ligadura do md-icon ("sticky_note_2") entraria no textContent sobre o
+// qual as posições dos grifos são contadas. Pelo mesmo motivo, nada de
+// espaço entre as tags.
+const ICONE_NOTA = html`<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true"><path
+  fill="currentColor"
+  d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10l6-6V5a2 2 0 0 0-2-2zM7 8h10v2H7V8zm5 6H7v-2h5v2zm2 5.5V14h5.5L14 19.5z"
+/></svg>`
+
+function resumir(texto, limite) {
+  const corrido = texto.replace(/\s+/g, ' ')
+  return corrido.length > limite ? `${corrido.slice(0, limite - 1)}…` : corrido
+}
 
 /** Ancestral rolável mais próximo, atravessando shadow roots. */
 function ancestralRolavel(el) {
@@ -96,6 +112,7 @@ export class NormaView extends LitElement {
     _grifos: { state: true },
     _selecao: { state: true },
     _editando: { state: true },
+    _notaAberta: { state: true },
   }
 
   static styles = css`
@@ -220,6 +237,20 @@ export class NormaView extends LitElement {
       cursor: pointer;
     }
 
+    .marca-nota {
+      display: inline-flex;
+      align-items: center;
+      vertical-align: super;
+      margin: 0 1px 0 2px;
+      padding: 1px 2px;
+      border: 0;
+      border-radius: 4px;
+      font-size: 0.8em;
+      line-height: 1;
+      cursor: pointer;
+      color: ${unsafeCSS(COR_TEXTO_GRIFO)};
+    }
+
     /* Enquanto a barra de cores está aberta, o fim da norma precisa poder
        rolar para cima dela. */
     :host([data-barra-aberta]) {
@@ -235,7 +266,7 @@ export class NormaView extends LitElement {
       box-sizing: border-box;
       width: min(100%, 44rem);
       display: flex;
-      align-items: center;
+      flex-direction: column;
       gap: 8px;
       padding: 8px 12px;
       padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
@@ -243,6 +274,28 @@ export class NormaView extends LitElement {
       color: var(--md-sys-color-on-surface, #1d1b20);
       border-top: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
       box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.18);
+    }
+
+    .linha {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nota {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nota md-outlined-text-field {
+      width: 100%;
+    }
+
+    .nota .acoes {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
     }
 
     .cores {
@@ -295,6 +348,7 @@ export class NormaView extends LitElement {
     this._grifos = []
     this._selecao = null
     this._editando = null
+    this._notaAberta = false
 
     // Um long-press no Android é tratado pela UI de seleção do sistema e
     // termina em touchcancel, não em touchend: evento de toque nunca dispara
@@ -310,7 +364,7 @@ export class NormaView extends LitElement {
       if (!this._editando) return
       const barra = this.renderRoot.querySelector('.barra-grifo')
       if (barra && evento.composedPath().includes(barra)) return
-      this._editando = null
+      this._fecharEdicao()
     }
   }
 
@@ -346,13 +400,14 @@ export class NormaView extends LitElement {
     this._estado = 'carregando'
     this._erro = null
     this._selecao = null
-    this._editando = null
+    this._fecharEdicao()
     try {
       const dados = await carregarNorma(caminho)
       // Uma navegação mais nova pode ter começado enquanto esta esperava.
       if (this.caminho !== caminho) return
       this._dados = dados
       this._porId = new Map(dados.dispositivos.map((d) => [d.id, d]))
+      this._ordem = new Map(dados.dispositivos.map((d, i) => [d.id, i]))
       this._divisoes = this._divisoesPorArtigo(dados.estrutura)
       this._grifos = estudoService.grifosDaNorma(caminho)
       this._estado = 'pronto'
@@ -477,7 +532,7 @@ export class NormaView extends LitElement {
     const pedacos = this._pedacosSelecionados()
     if (pedacos) {
       const estavaAberta = this._barraAberta
-      this._editando = null
+      this._fecharEdicao()
       this._selecao = pedacos
       if (!estavaAberta) this._mostrarAcimaDaBarra(this._rangeSelecionado()?.getBoundingClientRect())
     } else if (this._selecao) {
@@ -485,36 +540,47 @@ export class NormaView extends LitElement {
     }
   }
 
-  _editarGrifo(evento, grifo) {
+  /** `comNota`: veio do ícone de nota, então a nota já abre. */
+  _editarGrifo(evento, grifo, comNota = false) {
     // Um toque que termina uma seleção sobre um grifo é seleção, não edição.
     if (this._rangeSelecionado()) return
     evento.stopPropagation()
     this._selecao = null
     this._editando = grifo
-    this._mostrarAcimaDaBarra(evento.currentTarget.getBoundingClientRect())
+    this._notaAberta = comNota
+    this._mostrarEdicaoAcimaDaBarra()
+    if (comNota) this._focarNota()
   }
 
   /**
    * Mantém a seleção viva durante o toque na barra: a ação padrão de um
    * pointerdown fora da seleção é desfazê-la, e não sobraria nada para grifar
-   * quando o click chegasse.
+   * quando o click chegasse. Editando um grifo não há seleção a proteger, e
+   * o campo da nota precisa poder receber o foco.
    */
   _aoPressionarBarra(evento) {
-    evento.preventDefault()
+    if (!this._editando) evento.preventDefault()
   }
 
   _aplicarCor(corId) {
     if (this._editando) {
+      this._salvarNota()
       estudoService.recolorirGrupo(this._editando.grupoId, corId)
       this._editando = null
+      this._notaAberta = false
     } else {
       // Relê em vez de confiar no que abriu a barra: alças arrastadas depois
       // ainda caem nas palavras certas.
       const pedacos = this._pedacosSelecionados() ?? this._selecao
       if (!pedacos) return
-      estudoService.adicionarGrifo(this.caminho, corId, pedacos)
+      const [novo] = estudoService.adicionarGrifo(this.caminho, corId, pedacos)
       document.getSelection()?.removeAllRanges()
       this._selecao = null
+      // A barra segue aberta sobre o grifo recém-criado: anotar na hora não
+      // pode custar um segundo toque no trecho.
+      this._editando = novo
+      this._notaAberta = false
+      this._mostrarEdicaoAcimaDaBarra()
     }
     this._grifos = estudoService.grifosDaNorma(this.caminho)
   }
@@ -522,13 +588,76 @@ export class NormaView extends LitElement {
   _removerGrifo() {
     if (this._editando) estudoService.removerGrupo(this._editando.grupoId)
     this._editando = null
+    this._notaAberta = false
     this._grifos = estudoService.grifosDaNorma(this.caminho)
+  }
+
+  get _campoNota() {
+    return this.renderRoot.querySelector('.nota md-outlined-text-field')
+  }
+
+  async _focarNota() {
+    await this.updateComplete
+    // O campo acabou de ser criado: sem esperar a primeira renderização
+    // dele, ainda não há textarea interno para receber o foco.
+    const campo = this._campoNota
+    await campo?.updateComplete
+    campo?.focus()
+  }
+
+  _alternarNota() {
+    if (this._notaAberta) {
+      this._salvarNota()
+      this._notaAberta = false
+    } else {
+      this._notaAberta = true
+      this._focarNota()
+      this._mostrarEdicaoAcimaDaBarra()
+    }
+  }
+
+  /**
+   * Grava o que estiver no campo da nota, se ele estiver aberto e mudou.
+   * Chamado em todo caminho que fecha a barra: um toque fora dela tira o
+   * campo do DOM, e com isso não vem blur em que confiar.
+   */
+  _salvarNota() {
+    const campo = this._campoNota
+    if (!this._editando || !this._notaAberta || !campo) return
+    const nota = campo.value.trim()
+    if (nota === (this._editando.nota ?? '')) return
+    estudoService.anotarGrupo(this._editando.grupoId, nota)
+    this._editando = { ...this._editando, nota: nota || undefined }
+    this._grifos = estudoService.grifosDaNorma(this.caminho)
+  }
+
+  _concluirNota() {
+    this._salvarNota()
+    this._notaAberta = false
+  }
+
+  _teclaNaNota(evento) {
+    if (evento.key === 'Escape') {
+      evento.stopPropagation()
+      this._notaAberta = false // descarta o rascunho
+    } else if (evento.key === 'Enter' && (evento.ctrlKey || evento.metaKey)) {
+      this._concluirNota()
+    }
+  }
+
+  _fecharEdicao() {
+    this._salvarNota()
+    this._editando = null
+    this._notaAberta = false
   }
 
   /** Rola o que a barra cobriria de volta para a vista, depois que ela aparece. */
   async _mostrarAcimaDaBarra(retangulo) {
     if (!retangulo) return
     await this.updateComplete
+    // Com a nota aberta, a altura da barra só é final depois que o campo
+    // dela renderiza.
+    await this._campoNota?.updateComplete
     const barra = this.renderRoot.querySelector('.barra-grifo')
     if (!barra) return
     const sobreposicao = retangulo.bottom - barra.getBoundingClientRect().top + FOLGA_BARRA
@@ -538,20 +667,42 @@ export class NormaView extends LitElement {
   }
 
   /**
+   * O mesmo, para o grifo em edição: a barra cresce ao abrir a nota e não
+   * pode esconder justamente o trecho anotado. Mede depois de renderizar,
+   * porque o grifo pode ter acabado de ser criado.
+   */
+  async _mostrarEdicaoAcimaDaBarra() {
+    await this.updateComplete
+    const grupoId = this._editando?.grupoId
+    if (!grupoId) return
+    const marcas = this.renderRoot.querySelectorAll(`mark[data-grupo="${grupoId}"]`)
+    this._mostrarAcimaDaBarra(marcas[marcas.length - 1]?.getBoundingClientRect())
+  }
+
+  /**
    * Grifos desta norma já ancorados no texto vigente, por dispositivo. Os
    * que não se acham mais (a redação mudou) não são pintados — aparecem só
    * no inventário, marcados como texto alterado.
    */
   _grifosPorDispositivo() {
     const mapa = new Map()
+    // O ícone de nota vai só no último pedaço do grupo, na ordem da lei: um
+    // grifo arrastado por três incisos continua sendo uma nota só.
+    const ultimos = new Map()
+    const depois = (a, b) =>
+      this._ordem.get(a.dispositivo) - this._ordem.get(b.dispositivo) || a.inicio - b.inicio
     for (const grifo of this._grifos) {
       const disp = this._porId.get(grifo.dispositivo)
       if (!disp) continue
       const posicoes = ancorarGrifo(grifo, versaoVigente(disp).texto)
       if (!posicoes) continue
+      const ancorado = { ...grifo, ...posicoes }
       if (!mapa.has(disp.id)) mapa.set(disp.id, [])
-      mapa.get(disp.id).push({ ...grifo, ...posicoes })
+      mapa.get(disp.id).push(ancorado)
+      const atual = ultimos.get(grifo.grupoId)
+      if (!atual || depois(ancorado, atual) > 0) ultimos.set(grifo.grupoId, ancorado)
     }
+    for (const ultimo of ultimos.values()) ultimo.ultimoDoGrupo = true
     return mapa
   }
 
@@ -613,13 +764,27 @@ export class NormaView extends LitElement {
     return segmentarTexto(texto, grifos).map(({ texto: trecho, grifo }) => {
       if (!grifo) return trecho
       const cor = corGrifo(grifo.cor)
+      const rotulo = estudoService.rotuloDaCor(cor)
       // O significado da cor vai no title: o destaque não pode depender só
       // de enxergar a cor.
-      return html`<mark
+      const marca = html`<mark
+        data-grupo=${grifo.grupoId}
         style="background:${cor.fundo};color:${COR_TEXTO_GRIFO}"
-        title="${estudoService.rotuloDaCor(cor)} — toque para recolorir ou remover"
+        title=${grifo.nota
+          ? `${rotulo}: ${resumir(grifo.nota, RESUMO_NOTA)}`
+          : `${rotulo} — toque para recolorir, anotar ou remover`}
         @click=${(e) => this._editarGrifo(e, grifo)}
         >${trecho}</mark
+      >`
+      if (!(grifo.nota && grifo.ultimoDoGrupo)) return marca
+      return html`${marca}<button
+          type="button"
+          class="marca-nota"
+          style="background:${cor.fundo}"
+          aria-label="Nota do grifo: ${resumir(grifo.nota, RESUMO_NOTA)}"
+          title=${grifo.nota}
+          @click=${(e) => this._editarGrifo(e, grifo, true)}
+        >${ICONE_NOTA}</button
       >`
     })
   }
@@ -634,28 +799,56 @@ export class NormaView extends LitElement {
         aria-label=${this._editando ? 'Editar grifo' : 'Grifar trecho'}
         @pointerdown=${this._aoPressionarBarra}
       >
-        <div class="cores">
-          ${CORES_GRIFO.map((cor) => {
-            const rotulo = estudoService.rotuloDaCor(cor)
-            return html`
-              <button
-                type="button"
-                class="cor"
-                aria-label="${cor.nome}: ${rotulo}"
-                aria-pressed=${this._editando ? String(atual === cor.id) : nothing}
-                @click=${() => this._aplicarCor(cor.id)}
-              >
-                <span class="amostra" style="background:${cor.fundo}"></span>
-                <span>${rotulo}</span>
-              </button>
-            `
-          })}
+        ${this._editando && this._notaAberta ? this._renderNota() : nothing}
+        <div class="linha">
+          <div class="cores">
+            ${CORES_GRIFO.map((cor) => {
+              const rotulo = estudoService.rotuloDaCor(cor)
+              return html`
+                <button
+                  type="button"
+                  class="cor"
+                  aria-label="${cor.nome}: ${rotulo}"
+                  aria-pressed=${this._editando ? String(atual === cor.id) : nothing}
+                  @click=${() => this._aplicarCor(cor.id)}
+                >
+                  <span class="amostra" style="background:${cor.fundo}"></span>
+                  <span>${rotulo}</span>
+                </button>
+              `
+            })}
+          </div>
+          ${this._editando
+            ? html`<md-icon-button
+                  aria-label=${this._editando.nota ? 'Editar nota' : 'Anotar'}
+                  aria-expanded=${String(this._notaAberta)}
+                  @click=${this._alternarNota}
+                >
+                  <md-icon>${this._editando.nota ? 'sticky_note_2' : 'note_add'}</md-icon>
+                </md-icon-button>
+                <md-icon-button aria-label="Remover grifo" @click=${this._removerGrifo}>
+                  <md-icon>delete</md-icon>
+                </md-icon-button>`
+            : nothing}
         </div>
-        ${this._editando
-          ? html`<md-icon-button aria-label="Remover grifo" @click=${this._removerGrifo}>
-              <md-icon>delete</md-icon>
-            </md-icon-button>`
-          : nothing}
+      </div>
+    `
+  }
+
+  _renderNota() {
+    return html`
+      <div class="nota">
+        <md-outlined-text-field
+          type="textarea"
+          rows="3"
+          label="Nota sobre o trecho"
+          .value=${this._editando.nota ?? ''}
+          @keydown=${this._teclaNaNota}
+        ></md-outlined-text-field>
+        <div class="acoes">
+          <md-text-button @click=${() => (this._notaAberta = false)}>Cancelar</md-text-button>
+          <md-filled-button @click=${this._concluirNota}>Salvar</md-filled-button>
+        </div>
       </div>
     `
   }
