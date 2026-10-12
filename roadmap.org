@@ -463,9 +463,8 @@ CLOSED: [2026-09-18 sex]
   =.gitignore=.
 - [X] Workflow de deploy passa =VITE_GA4_MEASUREMENT_ID= a partir de
   =vars= do repositório (variável, não secret: o Measurement ID é público
-  e vai no bundle). *Pendente do lado do GitHub*: criar a variável em
-  Settings > Secrets and variables > Actions > Variables quando a
-  propriedade do GA4 existir. Até lá o build sai sem medição.
+  e vai no bundle). Variável criada no repositório com o Measurement ID
+  do GA4 (=G-1CKVVX70ZH=); script =scripts/set-ga4-variable.sh= adicionado.
 - [X] Verificado no navegador com um id de teste (=npm run build &&
   npm run preview=): nada é requisitado antes da resposta; "Aceitar"
   carrega o =gtag.js= e manda um =page_view= com =route_name=home= e
